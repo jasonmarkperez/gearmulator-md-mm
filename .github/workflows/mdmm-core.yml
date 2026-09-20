@@ -33,6 +33,7 @@ on:
       - "source/pluginTester/**"
       - "source/ptypes/**"
       - "source/synthLib/**"
+      - "scripts/dev/**"
   workflow_dispatch:
   push:
     branches:
@@ -69,6 +70,7 @@ on:
       - "source/pluginTester/**"
       - "source/ptypes/**"
       - "source/synthLib/**"
+      - "scripts/dev/**"
 
 permissions:
   contents: read
@@ -103,6 +105,9 @@ jobs:
 
       - name: Install build dependencies
         run: sudo apt-get update && sudo apt-get install -y ninja-build libasound2-dev libgl1-mesa-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libfreetype6-dev
+      - name: Run dev harness unit tests
+        working-directory: scripts/dev
+        run: python3 test_perfrun.py -v
 
       - name: Configure
         shell: bash
