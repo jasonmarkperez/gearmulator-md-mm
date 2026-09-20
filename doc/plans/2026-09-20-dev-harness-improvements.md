@@ -891,7 +891,7 @@ python3 scripts/dev/dev.py perf md --mode paced --block 512 --repeats 3 --save-b
 python3 scripts/dev/dev.py perf mm --mode paced --scenario chords --repeats 3 --save-baseline
 ```
 
-Expected: three new baseline files. `chords` should show a **higher** `loadP50` than `notes` — it is strictly more work. If it does not, the scenario argument is not reaching the host; check the printed command line.
+Expected: three new baseline files. Do **not** expect `chords` to raise `loadP50`. Measured on this machine it does not: `chords` drives 384 MIDI note events against roughly 6 for `notes`, yet median load is flat (0.576 vs 0.569 back to back, inside the repeat spread). MD/MM emulate fixed DSP hardware cycle-accurately, so per-block work is largely independent of how many voices are sounding. What does respond is the tail — the same A/B moved `loadP99` from 0.898 to 1.090 and overruns from 31 to 202. Verify the scenario is reaching the host by checking the printed command line for `chords` and, if you want positive confirmation, the MIDI event count in the capture's JSON receipt. Treat `loadP99` and overrun counts as directional only: back-to-back runs of the identical configuration swung 32 vs 202 overruns on this machine.
 
 - [ ] **Step 7: Commit**
 
