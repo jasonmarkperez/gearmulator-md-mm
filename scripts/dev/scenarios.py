@@ -49,28 +49,45 @@ def boot(client, log) -> None:
     assert info["valid"], "device reports itself invalid after boot"
 
 
-def wait_for_stable_epoch(client, log, *, settle_after: float = 20.0,
-                          quiet_seconds: float = 6.0, deadline: float = 40.0) -> int:
+def wait_for_stable_epoch(client, log, *, since: float | None = None,
+                          settle_after: float = 20.0, quiet_seconds: float = 6.0,
+                          deadline: float = 40.0) -> int:
     """Wait for hardwareEpoch to stop moving on its own, then return it.
 
-    Machinedrum runs a one-off factory-flash commit roughly 16-20s after
-    instantiation (AudioPluginAudioProcessor::serviceFactoryInitialization(),
-    timer-driven, unconditional, nothing to do with any DAW-level restore --
-    it is skipped entirely on Monomachine). boot() can return in well under
-    4s, so a caller that reads hardwareEpoch right after boot() and treats
-    any later increase as "my restore landed" is actually watching for
-    *any* commit, including that unrelated factory reboot -- and a restore
-    the device silently refused would still pass, because the factory timer
-    fires regardless and bumps the epoch anyway.
+    Observed on this machine: hardwareEpoch performs one automatic,
+    non-restore commit within the first couple of seconds after launch, and
+    md::AudioPluginAudioProcessor::serviceFactoryInitialization() (Machinedrum
+    only; a no-op on Monomachine) can in principle commit a further one --
+    it is gated on Hardware::isFactoryFlashReadyForReboot(), which depends on
+    emulated CPU cycles and a flash-idle quiet period, not a fixed wall-clock
+    delay, so its timing tracks emulation speed (build config, host load)
+    rather than landing at a predictable offset. Across repeated runs during
+    development only the early automatic bump was ever observed to actually
+    fire; the factory-flash commit's diagnostic log line never printed even
+    across a 90s dedicated trace. Do not delete this wait on the strength of
+    that: the point is not to wait out one named mechanism, it is that
+    boot() returns on the first drawn frame, well before *anything* running
+    on its own timeline is guaranteed to have settled, and this function
+    defends against any such unattributed commit, known or not, by waiting
+    for observed quiescence rather than assuming it.
 
-    `settle_after` (default 20s, comfortably past the documented ~16-20s
-    window) is a floor: this function never returns before that much time
-    has elapsed, so a factory reboot that hasn't fired yet still gets a
-    chance to. `quiet_seconds` (default 6s) is then required with no further
-    change once that floor has passed, so a reboot landing right at the
-    boundary is still caught rather than raced.
+    `since` anchors the floor below to a moment earlier than this function's
+    own start -- pass the time the instance was launched (or as close to it
+    as the caller has), since the commit being excluded runs on its own
+    clock from instantiation, not from whenever this function happens to be
+    called. Defaults to this function's own start if the caller has nothing
+    earlier.
+
+    `settle_after` (default 20s) is a floor measured from `since`: this
+    function never returns before that much time has elapsed since instance
+    start, so a commit that hasn't fired yet still gets a chance to.
+    `quiet_seconds` (default 6s) is then required with no further change
+    once that floor has passed, so a commit landing right at the boundary is
+    still caught rather than raced. `deadline` bounds this function's own
+    running time, separately from the floor.
     """
     start = time.monotonic()
+    floor_from = since if since is not None else start
     end = start + deadline
     last_epoch = None
     last_change = start
@@ -83,11 +100,11 @@ def wait_for_stable_epoch(client, log, *, settle_after: float = 20.0,
             if last_epoch is not None:
                 log(f"  hardwareEpoch advanced {last_epoch} -> {epoch} at "
                     f"t={now - start:.1f}s while waiting for it to settle "
-                    f"(the MD factory-flash timer, most likely -- not the "
-                    f"restore under test)")
+                    f"(an automatic commit unrelated to the restore under "
+                    f"test, not the restore itself)")
             last_epoch = epoch
             last_change = now
-        elapsed = now - start
+        elapsed = now - floor_from
         quiet = now - last_change
         if elapsed >= settle_after and quiet >= quiet_seconds:
             return epoch
@@ -116,12 +133,13 @@ def state_roundtrip(client, log) -> None:
     proves a restore committed is get_front_panel's hardwareEpoch, which
     Device::commitPreparedState() increments on every committed swap.
 
-    That check is only sound once the pre-restore baseline excludes MD's
-    own timer-driven factory-flash commit (see wait_for_stable_epoch()) --
-    otherwise a refused restore can still show an epoch increase from that
-    unrelated commit and the scenario passes for the exact bug class its
-    docstring cites.
+    That check is only sound once the pre-restore baseline excludes any
+    commit running on its own clock from instantiation, independent of this
+    restore (see wait_for_stable_epoch()) -- otherwise a refused restore can
+    still show an epoch increase from that unrelated commit and the scenario
+    passes for the exact bug class its docstring cites.
     """
+    started = time.monotonic()
     boot(client, log)
 
     original = client.call("get_plugin_state")["data"]
@@ -131,11 +149,12 @@ def state_roundtrip(client, log) -> None:
     client.call("send_note", note=36, velocity=100, duration_ms=200)
     time.sleep(1.0)
 
-    # boot() only waits for the first drawn frame, which lands well before
-    # MD's factory-flash timer fires. Capturing epoch_before here, before
-    # that timer has settled, would attribute its unrelated commit to this
-    # restore instead.
-    epoch_before = wait_for_stable_epoch(client, log)
+    # boot() only waits for the first drawn frame, which can land well
+    # before any commit running on its own clock since instantiation has
+    # settled. Anchor the settle floor to `started`, not to whenever this
+    # call happens to run, or capturing epoch_before too early would
+    # attribute an unrelated commit to this restore instead.
+    epoch_before = wait_for_stable_epoch(client, log, since=started)
     log(f"hardwareEpoch stable at {epoch_before}, starting the restore")
     client.call("set_plugin_state", data=original)
 
