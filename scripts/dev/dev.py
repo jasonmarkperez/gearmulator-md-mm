@@ -12,7 +12,6 @@ Everything runs against ``temp/cmake_dev`` and ``temp/devroot``; your real
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import os
 import pathlib
@@ -25,6 +24,7 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from mcpclient import McpClient, McpError, read_instances  # noqa: E402
+import perfrun  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BUILD = ROOT / "temp" / "cmake_dev"
@@ -389,32 +389,6 @@ def cmd_panel(args) -> int:
 
 # ----------------------------------------------------------------------- performance
 
-def _render_seconds(prefix: pathlib.Path) -> list[tuple[int, float]]:
-    """Per-callback (start_sample, render seconds) from latency_host's CSV.
-
-    The JSON capture carries run metadata only; the per-block timings live in
-    the sibling .blocks.csv, whose render_ms column is the plug-in's own render
-    duration (late_ms is scheduler arrival, deliberately kept separate).
-
-    The sample index lets callers split the startup window from the steady
-    state. The opening seconds carry DSP JIT compilation and boot work: loads
-    there run mildly over budget (measured peak ~2.9x) and vary enough to
-    swamp a comparison, so folding them in made the overrun count useless --
-    three repeats of one build configuration gave 55, 86 and 108. Separating
-    them is what makes the paced figures a regression signal.
-
-    Note that excluding the window does NOT hide the large MD spikes: those
-    land around 16s, inside the steady state, and are lock waits rather than
-    JIT. See doc/dev_workflow.md.
-    """
-    csv_path = prefix.with_name(prefix.name + ".blocks.csv")
-    if not csv_path.is_file():
-        raise FileNotFoundError(f"latency_host produced no {csv_path}")
-
-    with csv_path.open(newline="", encoding="utf-8") as handle:
-        return [(int(row["sample"]), float(row["render_ms"]) / 1000.0)
-                for row in csv.DictReader(handle) if row.get("render_ms")]
-
 
 def cmd_perf(args) -> int:
     key = args.product
@@ -467,34 +441,14 @@ def cmd_perf(args) -> int:
         record = {"repeat": rep, "wallSeconds": wall,
                   "xRealtime": args.seconds / wall if wall > 0 else 0.0}
 
-        budget = args.block / args.rate
-        skip_samples = int(args.warmup * args.rate)
-
         try:
-            renders = _render_seconds(prefix)
+            blocks = perfrun.read_blocks(
+                prefix.with_name(prefix.name + ".blocks.csv"))
         except FileNotFoundError as e:
             print(f"warning: {e}", file=sys.stderr)
-            renders = []
+            blocks = []
 
-        steady = [d for sample, d in renders if sample >= skip_samples]
-        startup = [d for sample, d in renders if sample < skip_samples]
-
-        if steady:
-            loads = sorted(d / budget for d in steady)
-            record["callbacks"] = len(loads)
-            record["loadP50"] = statistics.median(loads)
-            record["loadP99"] = loads[min(len(loads) - 1, int(len(loads) * 0.99))]
-            record["loadMax"] = loads[-1]
-            record["overruns"] = sum(1 for load in loads if load > 1.0)
-
-        # Reported separately, never folded into the steady-state figures.
-        # Boot and JIT cost, mildly over budget and noisy; a different problem
-        # from sustained load, and from the MD lock-wait spikes at ~16s.
-        if startup:
-            startup_loads = [d / budget for d in startup]
-            record["warmupSeconds"] = args.warmup
-            record["startupOverruns"] = sum(1 for load in startup_loads if load > 1.0)
-            record["startupLoadMax"] = max(startup_loads)
+        record.update(perfrun.summarize(blocks, args.rate, args.block, args.warmup))
 
         samples.append(record)
         print(f"  repeat {rep}: {record}")
