@@ -49,6 +49,56 @@ def boot(client, log) -> None:
     assert info["valid"], "device reports itself invalid after boot"
 
 
+def wait_for_stable_epoch(client, log, *, settle_after: float = 20.0,
+                          quiet_seconds: float = 6.0, deadline: float = 40.0) -> int:
+    """Wait for hardwareEpoch to stop moving on its own, then return it.
+
+    Machinedrum runs a one-off factory-flash commit roughly 16-20s after
+    instantiation (AudioPluginAudioProcessor::serviceFactoryInitialization(),
+    timer-driven, unconditional, nothing to do with any DAW-level restore --
+    it is skipped entirely on Monomachine). boot() can return in well under
+    4s, so a caller that reads hardwareEpoch right after boot() and treats
+    any later increase as "my restore landed" is actually watching for
+    *any* commit, including that unrelated factory reboot -- and a restore
+    the device silently refused would still pass, because the factory timer
+    fires regardless and bumps the epoch anyway.
+
+    `settle_after` (default 20s, comfortably past the documented ~16-20s
+    window) is a floor: this function never returns before that much time
+    has elapsed, so a factory reboot that hasn't fired yet still gets a
+    chance to. `quiet_seconds` (default 6s) is then required with no further
+    change once that floor has passed, so a reboot landing right at the
+    boundary is still caught rather than raced.
+    """
+    start = time.monotonic()
+    end = start + deadline
+    last_epoch = None
+    last_change = start
+    epoch = None
+    while True:
+        now = time.monotonic()
+        panel = client.call("get_front_panel", lcd=False)
+        epoch = panel["hardwareEpoch"]
+        if epoch != last_epoch:
+            if last_epoch is not None:
+                log(f"  hardwareEpoch advanced {last_epoch} -> {epoch} at "
+                    f"t={now - start:.1f}s while waiting for it to settle "
+                    f"(the MD factory-flash timer, most likely -- not the "
+                    f"restore under test)")
+            last_epoch = epoch
+            last_change = now
+        elapsed = now - start
+        quiet = now - last_change
+        if elapsed >= settle_after and quiet >= quiet_seconds:
+            return epoch
+        if now >= end:
+            raise AssertionError(
+                f"hardwareEpoch never settled within {deadline:.0f}s "
+                f"(last value {epoch}, quiet for only {quiet:.1f}s of the "
+                f"required {quiet_seconds:.0f}s)")
+        time.sleep(0.5)
+
+
 def state_roundtrip(client, log) -> None:
     """A DAW-level save, a change, and a restore leave the machine alive.
 
@@ -65,6 +115,12 @@ def state_roundtrip(client, log) -> None:
     across a totally unrelated (or silently rejected) restore. What actually
     proves a restore committed is get_front_panel's hardwareEpoch, which
     Device::commitPreparedState() increments on every committed swap.
+
+    That check is only sound once the pre-restore baseline excludes MD's
+    own timer-driven factory-flash commit (see wait_for_stable_epoch()) --
+    otherwise a refused restore can still show an epoch increase from that
+    unrelated commit and the scenario passes for the exact bug class its
+    docstring cites.
     """
     boot(client, log)
 
@@ -75,7 +131,12 @@ def state_roundtrip(client, log) -> None:
     client.call("send_note", note=36, velocity=100, duration_ms=200)
     time.sleep(1.0)
 
-    epoch_before = client.call("get_front_panel", lcd=False)["hardwareEpoch"]
+    # boot() only waits for the first drawn frame, which lands well before
+    # MD's factory-flash timer fires. Capturing epoch_before here, before
+    # that timer has settled, would attribute its unrelated commit to this
+    # restore instead.
+    epoch_before = wait_for_stable_epoch(client, log)
+    log(f"hardwareEpoch stable at {epoch_before}, starting the restore")
     client.call("set_plugin_state", data=original)
 
     # A committed restore constructs a fresh machine and reboots it; the
