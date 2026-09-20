@@ -168,6 +168,9 @@ SCENARIOS = ("notes", "chords", "input", "transport")
 # measurement period means anything.
 MIN_SECONDS = 20
 
+# latency_host.cpp:70 rejects anything longer outright.
+MAX_SECONDS = 600
+
 
 def validate_run(scenario: str, rate: int, block_frames: int,
                  seconds: int) -> str | None:
@@ -176,6 +179,8 @@ def validate_run(scenario: str, rate: int, block_frames: int,
         return f"unknown scenario {scenario!r}; choose from {', '.join(SCENARIOS)}"
     if seconds < MIN_SECONDS:
         return f"latency_host requires seconds >= {MIN_SECONDS}"
+    if seconds > MAX_SECONDS:
+        return f"latency_host requires seconds <= {MAX_SECONDS}"
     if rate < 8000 or rate > 192000:
         return "latency_host requires 8000 <= rate <= 192000"
     if block_frames < 1 or block_frames > 8192:

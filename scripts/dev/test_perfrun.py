@@ -249,6 +249,10 @@ class HostCommandTest(unittest.TestCase):
         # latency_host requires 0 <= phase < block.
         self.assertEqual(self.command(block_frames=64)[11], "63")
 
+    def test_a_block_of_one_leaves_no_room_for_a_nonzero_phase(self) -> None:
+        self.assertIsNone(perfrun.validate_run("notes", 48000, 1, 20))
+        self.assertEqual(self.command(block_frames=1)[11], "0")
+
 
 class ValidateRunTest(unittest.TestCase):
     def test_short_runs_are_rejected_before_launching_the_host(self) -> None:
@@ -258,8 +262,9 @@ class ValidateRunTest(unittest.TestCase):
     def test_unknown_scenarios_are_rejected(self) -> None:
         self.assertIsNotNone(perfrun.validate_run("wobble", 48000, 128, 20))
 
-    def test_a_block_of_one_leaves_no_room_for_a_nonzero_phase(self) -> None:
-        self.assertIsNone(perfrun.validate_run("notes", 48000, 1, 20))
+    def test_runs_above_the_ceiling_are_rejected(self) -> None:
+        self.assertIsNotNone(perfrun.validate_run("notes", 48000, 128, 700))
+        self.assertIsNone(perfrun.validate_run("notes", 48000, 128, 600))
 
 
 
