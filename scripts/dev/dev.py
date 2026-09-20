@@ -25,6 +25,7 @@ import time
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from mcpclient import McpClient, McpError, read_instances  # noqa: E402
 import perfrun  # noqa: E402
+import scenarios  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BUILD = ROOT / "temp" / "cmake_dev"
@@ -387,6 +388,52 @@ def cmd_panel(args) -> int:
     return 0
 
 
+def cmd_ui(args) -> int:
+    """Launch the standalone app, run one scenario against it, shut it down."""
+    if args.scenario not in scenarios.SCENARIOS:
+        fail(f"unknown scenario {args.scenario!r}; "
+             f"choose from {', '.join(sorted(scenarios.SCENARIOS))}")
+
+    key = args.product
+    roms = find_roms()
+    if key not in roms:
+        fail(f"no valid {PRODUCTS[key]['model']} ROM in {ROMS}")
+
+    app = standalone_app(key, config_type(args))
+    if not app.exists():
+        fail(f"{app} not built")
+
+    env = stage_devroot(key, roms[key], enable_mcp=True, fresh=True)
+    binary = app / "Contents" / "MacOS" / PRODUCTS[key]["product"]
+    proc = subprocess.Popen([str(binary)], env=env)
+    print(f"launched pid {proc.pid}")
+
+    try:
+        client = McpClient.wait_for(pid=proc.pid, timeout=args.timeout)
+        client.initialize()
+        scenarios.SCENARIOS[args.scenario](client, lambda m: print(f"  {m}"))
+    except AssertionError as e:
+        print(f"FAIL {args.scenario}: {e}", file=sys.stderr)
+        return 1
+    except McpError as e:
+        print(f"ERROR {args.scenario}: {e}", file=sys.stderr)
+        return 2
+    finally:
+        # The MCP exit tool terminates only this host process, so parallel
+        # instances are unaffected. Fall back to a signal if it does not land.
+        try:
+            McpClient.connect(pid=proc.pid).call("exit")
+        except Exception:
+            proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+    print(f"PASS {args.scenario}")
+    return 0
+
+
 # ----------------------------------------------------------------------- performance
 
 
@@ -578,6 +625,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--name", default="", help="match instance by plugin name substring")
     sp.add_argument("--pid", type=int, help="match instance by host pid")
     sp.set_defaults(func=cmd_panel)
+
+    sp = sub.add_parser("ui", help="run a scenario against the standalone app")
+    add_config(sp)
+    sp.add_argument("product", choices=sorted(PRODUCTS))
+    sp.add_argument("scenario", choices=sorted(scenarios.SCENARIOS))
+    sp.add_argument("--timeout", type=float, default=90.0,
+                    help="seconds to wait for the MCP server")
+    sp.set_defaults(func=cmd_ui)
 
     sp = sub.add_parser("perf", help="measure render performance (Release only)")
     sp.add_argument("product", choices=sorted(PRODUCTS))

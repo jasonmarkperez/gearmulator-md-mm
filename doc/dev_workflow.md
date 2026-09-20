@@ -107,35 +107,69 @@ When several instances are running, disambiguate with `--pid` (or `pid=`); the
 client verifies liveness by pid, because the discovery file keeps stale entries
 after a crash.
 
+### Scenario library
+
+```sh
+python3 scripts/dev/dev.py ui md boot
+python3 scripts/dev/dev.py ui md state_roundtrip
+```
+
+Each scenario launches the standalone app in a fresh isolated data root,
+drives it over MCP, asserts, and shuts the instance down again. Scenarios live
+in `scripts/dev/scenarios.py` and assert on decoded panel state and device
+facts, never on screenshots.
+
+`state_roundtrip` covers the DAW save/restore path through the shipping app.
+That path regressed in 2.1.2 across three products, and no other local check
+exercises it end to end.
+
 ## Measure performance
 
 ```sh
 python3 scripts/dev/dev.py perf md --mode throughput
 python3 scripts/dev/dev.py perf md --mode paced
+python3 scripts/dev/dev.py perf md --mode throughput --scenario chords
 ```
 
 Both modes drive `latency_host` (`source/pluginTester/latency/`) against the
-Release VST3 in an isolated data root. Minimum run length is 20 seconds, which
-the host enforces so its warm-up window does not dominate.
+Release VST3 in an isolated data root. `--seconds` must be between 20 and 600
+(default 20); `latency_host` enforces both bounds — the floor so its warm-up
+window does not dominate, the ceiling so a run cannot be left rendering
+indefinitely.
 
-- **throughput** renders unpaced and reports `xRealtime` — seconds of audio per
-  second of wall clock. This is the cheap A/B for emulation, DSP and JIT work.
+- **throughput** renders unpaced and reports **render-only** throughput
+  (`xRenderOnly`) as the headline figure — seconds of audio per second spent
+  actually inside the render callback — with wall-clock throughput
+  (`xRealtime`) reported alongside as a secondary figure. Render-only covers
+  only the steady-state window, while wall clock also blends in the cheaper
+  warm-up phase, so on MD render-only can read slightly *below* wall clock;
+  that ordering is expected, not a fault.
 - **paced** renders at real time and reports the render-duration distribution as
   a fraction of the callback budget (p50/p99/max) plus overruns. This is the
   "will it crackle" check. Scheduler arrival lateness is tracked separately by
   the host and is not folded into these numbers.
+- `--scenario` selects the workload: `notes` (default), `chords`, `input`
+  (opens two input channels), or `transport`.
 
 Record and compare baselines:
 
 ```sh
 python3 scripts/dev/dev.py perf md --mode throughput --save-baseline
 python3 scripts/dev/dev.py perf md --mode throughput --check
+python3 scripts/dev/dev.py perf md --mode throughput --check --max-spread 0.05
 ```
 
-Baselines live in `scripts/dev/baselines/` and record the host they were taken
-on. They are machine-specific, so `--check` is a local gate, not a CI one — and
-only slowdowns fail it. Expect a few percent of run-to-run noise; compare on an
-otherwise idle machine.
+Baselines live in `scripts/dev/baselines/` as one file per exact
+configuration: the filename is qualified by product, mode, scenario, rate and
+block, and the file records the host it was taken on. A `--check` or
+`--save-baseline` against a baseline recorded under a different configuration
+is refused outright rather than silently compared or overwritten — delete the
+stale baseline file first if replacing it is intended. Baselines are
+machine-specific, so `--check` is a local gate, not a CI one, and only
+slowdowns fail it. `--max-spread` (default 3%) separately refuses the
+comparison when the repeats themselves vary by more than that fraction, since
+a spread that wide cannot resolve `--tolerance`. Expect a few percent of
+run-to-run noise; compare on an otherwise idle machine.
 
 ### Warm-up window
 
