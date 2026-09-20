@@ -390,10 +390,6 @@ def cmd_panel(args) -> int:
 
 def cmd_ui(args) -> int:
     """Launch the standalone app, run one scenario against it, shut it down."""
-    if args.scenario not in scenarios.SCENARIOS:
-        fail(f"unknown scenario {args.scenario!r}; "
-             f"choose from {', '.join(sorted(scenarios.SCENARIOS))}")
-
     key = args.product
     roms = find_roms()
     if key not in roms:
@@ -415,12 +411,17 @@ def cmd_ui(args) -> int:
     except AssertionError as e:
         print(f"FAIL {args.scenario}: {e}", file=sys.stderr)
         return 1
-    except McpError as e:
+    except (McpError, OSError) as e:
+        # OSError also covers urllib.error.URLError (a subclass): a dropped
+        # connection or a wait_for() timeout is an infrastructure failure,
+        # the same bucket as a rejected MCP call.
         print(f"ERROR {args.scenario}: {e}", file=sys.stderr)
         return 2
     finally:
-        # The MCP exit tool terminates only this host process, so parallel
-        # instances are unaffected. Fall back to a signal if it does not land.
+        # No MCP tool actually terminates the host process in this build --
+        # there is no "exit" entry in tools/list -- so the call below always
+        # fails and falls through to a plain terminate() signal instead. It
+        # is still attempted first in case a future build adds one.
         try:
             McpClient.connect(pid=proc.pid).call("exit")
         except Exception:
@@ -429,6 +430,7 @@ def cmd_ui(args) -> int:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait()
 
     print(f"PASS {args.scenario}")
     return 0
