@@ -468,8 +468,13 @@ def cmd_perf(args) -> int:
     }
 
     if args.mode == "throughput":
-        report["xRealtimeMedian"] = statistics.median(s["xRealtime"] for s in samples)
-        headline = f"xRealtime median {report['xRealtimeMedian']:.2f}x"
+        renders = [s["xRenderOnly"] for s in samples if "xRenderOnly" in s]
+        walls = [s["xRealtime"] for s in samples]
+        report["xRenderOnlyMedian"] = statistics.median(renders) if renders else None
+        report["xRealtimeMedian"] = statistics.median(walls)
+        headline = (f"render-only {report['xRenderOnlyMedian']:.3f}x "
+                    f"(wall {report['xRealtimeMedian']:.3f}x, includes startup)"
+                    if renders else "no callback timings in capture")
     else:
         p50s = [s["loadP50"] for s in samples if "loadP50" in s]
         p99s = [s["loadP99"] for s in samples if "loadP99" in s]

@@ -73,6 +73,11 @@ def summarize(blocks: list[Block], rate: int, block_frames: int,
         result.update({
             "audioSeconds": audio,
             "renderSeconds": render,
+            # Wall clock includes process start, plug-in instantiation and
+            # firmware boot -- about 2% of a 20s run on an M3 Max. This ratio
+            # counts only time spent inside the render callback, so it is the
+            # figure that moves when emulation itself gets faster.
+            "xRenderOnly": audio / render if render > 0 else 0.0,
             "loadP50": statistics.median(loads),
             "loadP99": loads[min(len(loads) - 1, int(len(loads) * 0.99))],
             "loadMax": loads[-1],

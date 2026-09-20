@@ -86,6 +86,22 @@ class SummarizeTest(BlocksFixture):
         self.assertEqual(summary["callbacks"], 0)
         self.assertNotIn("loadP50", summary)
 
+    def test_render_only_throughput_ignores_everything_outside_the_callback(self) -> None:
+        # Ten callbacks, 50ms render each against a 0.1s budget: the renderer
+        # is exactly twice real time regardless of how long the process lived.
+        summary = self.summary([50.0] * 10, warmup=0.0)
+        self.assertAlmostEqual(summary["xRenderOnly"], 2.0)
+
+    def test_render_only_throughput_covers_the_steady_window_only(self) -> None:
+        # Warm-up callbacks are four times as expensive; excluding them must
+        # raise the ratio from 0.8x to 2.0x.
+        summary = self.summary([200.0] * 5 + [50.0] * 5, warmup=0.5)
+        self.assertAlmostEqual(summary["xRenderOnly"], 2.0)
+
+    def test_render_only_throughput_is_absent_without_steady_callbacks(self) -> None:
+        summary = self.summary([50.0], warmup=99.0)
+        self.assertNotIn("xRenderOnly", summary)
+
 
 if __name__ == "__main__":
     unittest.main()
