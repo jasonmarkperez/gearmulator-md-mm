@@ -156,5 +156,72 @@ class BaselineIdentityTest(unittest.TestCase):
         self.assertIn("seconds", perfrun.CONFIG_KEYS)
 
 
+class SpreadTest(unittest.TestCase):
+    def test_spread_is_the_range_relative_to_the_median(self) -> None:
+        self.assertAlmostEqual(perfrun.spread([1.0, 1.0, 1.0]), 0.0)
+        self.assertAlmostEqual(perfrun.spread([0.9, 1.0, 1.1]), 0.2)
+
+    def test_spread_of_a_single_repeat_is_zero(self) -> None:
+        self.assertAlmostEqual(perfrun.spread([1.7]), 0.0)
+
+    def test_spread_is_defined_for_an_empty_or_zero_series(self) -> None:
+        self.assertAlmostEqual(perfrun.spread([]), 0.0)
+        self.assertAlmostEqual(perfrun.spread([0.0, 0.0]), 0.0)
+
+
+class HeadlineTest(unittest.TestCase):
+    def test_throughput_headline_reads_render_only_from_each_repeat(self) -> None:
+        samples = [{"xRenderOnly": 1.8}, {"xRenderOnly": 1.9}]
+        self.assertEqual(
+            perfrun.headline_values(samples, "throughput"), [1.8, 1.9])
+
+    def test_paced_headline_reads_the_median_load(self) -> None:
+        samples = [{"loadP50": 0.6}, {"loadP50": 0.62}]
+        self.assertEqual(perfrun.headline_values(samples, "paced"), [0.6, 0.62])
+
+    def test_repeats_without_timings_are_skipped_not_counted_as_zero(self) -> None:
+        samples = [{"loadP50": 0.6}, {}]
+        self.assertEqual(perfrun.headline_values(samples, "paced"), [0.6])
+
+
+class CompareTest(unittest.TestCase):
+    def report(self, mode: str, value: float) -> dict:
+        key = perfrun.HEADLINE_MEDIAN_KEY[mode]
+        return {"mode": mode, key: value}
+
+    def test_throughput_getting_slower_is_a_regression(self) -> None:
+        ok, message = perfrun.compare(
+            self.report("throughput", 1.60), self.report("throughput", 1.80), 0.05)
+        self.assertFalse(ok)
+        self.assertIn("-11.1%", message)
+
+    def test_throughput_getting_faster_is_never_a_regression(self) -> None:
+        ok, _ = perfrun.compare(
+            self.report("throughput", 2.20), self.report("throughput", 1.80), 0.05)
+        self.assertTrue(ok)
+
+    def test_load_going_up_is_a_regression(self) -> None:
+        ok, _ = perfrun.compare(
+            self.report("paced", 0.70), self.report("paced", 0.60), 0.05)
+        self.assertFalse(ok)
+
+    def test_load_going_down_is_never_a_regression(self) -> None:
+        ok, _ = perfrun.compare(
+            self.report("paced", 0.50), self.report("paced", 0.60), 0.05)
+        self.assertTrue(ok)
+
+    def test_a_change_inside_the_tolerance_passes_in_both_directions(self) -> None:
+        for mode, old, new in (("throughput", 1.80, 1.78), ("paced", 0.60, 0.61)):
+            ok, _ = perfrun.compare(
+                self.report(mode, new), self.report(mode, old), 0.05)
+            self.assertTrue(ok, f"{mode} {old} -> {new} should pass")
+
+    def test_a_missing_headline_is_reported_rather_than_crashing(self) -> None:
+        ok, message = perfrun.compare({"mode": "paced"}, self.report("paced", 0.6), 0.05)
+        self.assertFalse(ok)
+        self.assertIn("loadP50Median", message)
+
+
+
 if __name__ == "__main__":
     unittest.main()

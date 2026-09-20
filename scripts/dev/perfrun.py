@@ -113,3 +113,50 @@ def config_mismatch(report: dict, baseline: dict) -> list[str]:
     """
     return [key for key in CONFIG_KEYS
             if report.get(key) != baseline.get(key)]
+
+
+# The figure each mode is compared on. Throughput rises when things improve;
+# callback load falls.
+HEADLINE_KEY = {"throughput": "xRenderOnly", "paced": "loadP50"}
+
+
+def headline_values(samples: list[dict], mode: str) -> list[float]:
+    key = HEADLINE_KEY[mode]
+    return [s[key] for s in samples if key in s]
+
+
+def spread(values: list[float]) -> float:
+    """Range relative to the median, as a fraction.
+
+    A comparison cannot resolve a tolerance smaller than the run-to-run
+    spread, so the caller refuses instead of reporting a confident delta on
+    noise.
+    """
+    if not values:
+        return 0.0
+    median = statistics.median(values)
+    if median == 0:
+        return 0.0
+    return (max(values) - min(values)) / median
+
+
+# Report-level keys, one per mode, and which direction counts as worse.
+HEADLINE_MEDIAN_KEY = {"throughput": "xRenderOnlyMedian", "paced": "loadP50Median"}
+LOWER_IS_BETTER = {"throughput": False, "paced": True}
+
+
+def compare(report: dict, baseline: dict, tolerance: float) -> tuple[bool, str]:
+    """Compare one report against a baseline on that mode's headline figure.
+
+    Only moves in the worse direction fail: getting faster is never a
+    regression. Returns (passed, human readable message).
+    """
+    mode = report["mode"]
+    key = HEADLINE_MEDIAN_KEY[mode]
+    new, old = report.get(key), baseline.get(key)
+    if new is None or old is None or old == 0:
+        return False, f"cannot compare: {key} missing or zero in report or baseline"
+
+    delta = (new - old) / old
+    worse = delta > tolerance if LOWER_IS_BETTER[mode] else delta < -tolerance
+    return (not worse), f"{key} {old:.4f} -> {new:.4f} ({delta:+.1%})"

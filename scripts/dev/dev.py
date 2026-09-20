@@ -490,7 +490,9 @@ def cmd_perf(args) -> int:
                     f"(first {args.warmup}s, excluded)"
                     if p50s else "no callback timings in capture")
 
-    print(f"\n{cfg['model']} {args.mode}: {headline}")
+    report["spread"] = perfrun.spread(perfrun.headline_values(samples, args.mode))
+    print(f"\n{cfg['model']} {args.mode}: {headline} "
+          f"[spread {report['spread']:.1%} over {len(samples)} repeats]")
 
     if args.output:
         pathlib.Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -519,31 +521,18 @@ def cmd_perf(args) -> int:
         if mismatch:
             fail(f"baseline {baseline_file.name} was recorded with a different "
                  f"{', '.join(mismatch)}; re-record it with --save-baseline")
-        return _compare(report, baseline, args.tolerance, args.mode)
+        if report["spread"] > args.max_spread:
+            fail(f"repeats spread {report['spread']:.1%}, above the "
+                 f"{args.max_spread:.0%} limit: this run cannot resolve a "
+                 f"{args.tolerance:.0%} tolerance. Re-run on an idle machine.")
+        passed, message = perfrun.compare(report, baseline, args.tolerance)
+        print(message)
+        if not passed:
+            print(f"REGRESSION: exceeds {args.tolerance:.0%} tolerance")
+            return 1
+        print("within tolerance")
+        return 0
 
-    return 0
-
-
-def _compare(report: dict, baseline: dict, tolerance: float, mode: str) -> int:
-    if mode == "throughput":
-        new, old = report["xRealtimeMedian"], baseline["xRealtimeMedian"]
-        delta = (new - old) / old
-        print(f"throughput {old:.2f}x -> {new:.2f}x ({delta:+.1%})")
-        # Only slowdowns fail; getting faster is never a regression.
-        regressed = delta < -tolerance
-    else:
-        new, old = report["loadP50Median"], baseline["loadP50Median"]
-        if new is None or old is None:
-            fail("cannot compare paced runs without callback timings")
-        delta = (new - old) / old
-        print(f"load p50 {old:.3f} -> {new:.3f} ({delta:+.1%}), "
-              f"overruns {report['overrunsTotal']}")
-        regressed = delta > tolerance
-
-    if regressed:
-        print(f"REGRESSION: exceeds {tolerance:.0%} tolerance")
-        return 1
-    print("within tolerance")
     return 0
 
 
@@ -618,6 +607,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--save-baseline", action="store_true")
     sp.add_argument("--check", action="store_true", help="compare against the baseline")
     sp.add_argument("--tolerance", type=float, default=0.05)
+    sp.add_argument("--max-spread", type=float, default=0.03,
+                    help="refuse to compare when repeats vary more than this")
     sp.set_defaults(func=cmd_perf)
 
     return p
