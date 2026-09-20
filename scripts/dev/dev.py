@@ -389,19 +389,30 @@ def cmd_panel(args) -> int:
 
 # ----------------------------------------------------------------------- performance
 
-def _render_seconds(prefix: pathlib.Path) -> list[float]:
-    """Per-callback render durations, from latency_host's blocks CSV.
+def _render_seconds(prefix: pathlib.Path) -> list[tuple[int, float]]:
+    """Per-callback (start_sample, render seconds) from latency_host's CSV.
 
     The JSON capture carries run metadata only; the per-block timings live in
     the sibling .blocks.csv, whose render_ms column is the plug-in's own render
     duration (late_ms is scheduler arrival, deliberately kept separate).
+
+    The sample index lets callers split the startup window from the steady
+    state. The opening seconds carry DSP JIT compilation and boot work: loads
+    there run mildly over budget (measured peak ~2.9x) and vary enough to
+    swamp a comparison, so folding them in made the overrun count useless --
+    three repeats of one build configuration gave 55, 86 and 108. Separating
+    them is what makes the paced figures a regression signal.
+
+    Note that excluding the window does NOT hide the large MD spikes: those
+    land around 16s, inside the steady state, and are lock waits rather than
+    JIT. See doc/dev_workflow.md.
     """
     csv_path = prefix.with_name(prefix.name + ".blocks.csv")
     if not csv_path.is_file():
         raise FileNotFoundError(f"latency_host produced no {csv_path}")
 
     with csv_path.open(newline="", encoding="utf-8") as handle:
-        return [float(row["render_ms"]) / 1000.0
+        return [(int(row["sample"]), float(row["render_ms"]) / 1000.0)
                 for row in csv.DictReader(handle) if row.get("render_ms")]
 
 
@@ -456,20 +467,34 @@ def cmd_perf(args) -> int:
         record = {"repeat": rep, "wallSeconds": wall,
                   "xRealtime": args.seconds / wall if wall > 0 else 0.0}
 
+        budget = args.block / args.rate
+        skip_samples = int(args.warmup * args.rate)
+
         try:
-            durations = _render_seconds(prefix)
+            renders = _render_seconds(prefix)
         except FileNotFoundError as e:
             print(f"warning: {e}", file=sys.stderr)
-            durations = []
+            renders = []
 
-        if durations:
-            budget = args.block / args.rate
-            loads = sorted(d / budget for d in durations)
+        steady = [d for sample, d in renders if sample >= skip_samples]
+        startup = [d for sample, d in renders if sample < skip_samples]
+
+        if steady:
+            loads = sorted(d / budget for d in steady)
             record["callbacks"] = len(loads)
             record["loadP50"] = statistics.median(loads)
             record["loadP99"] = loads[min(len(loads) - 1, int(len(loads) * 0.99))]
             record["loadMax"] = loads[-1]
             record["overruns"] = sum(1 for load in loads if load > 1.0)
+
+        # Reported separately, never folded into the steady-state figures.
+        # Boot and JIT cost, mildly over budget and noisy; a different problem
+        # from sustained load, and from the MD lock-wait spikes at ~16s.
+        if startup:
+            startup_loads = [d / budget for d in startup]
+            record["warmupSeconds"] = args.warmup
+            record["startupOverruns"] = sum(1 for load in startup_loads if load > 1.0)
+            record["startupLoadMax"] = max(startup_loads)
 
         samples.append(record)
         print(f"  repeat {rep}: {record}")
@@ -482,6 +507,7 @@ def cmd_perf(args) -> int:
         "rate": args.rate,
         "block": args.block,
         "seconds": args.seconds,
+        "warmupSeconds": args.warmup,
         "host": platform.platform(),
         "machine": platform.machine(),
         "samples": samples,
@@ -492,10 +518,16 @@ def cmd_perf(args) -> int:
         headline = f"xRealtime median {report['xRealtimeMedian']:.2f}x"
     else:
         p50s = [s["loadP50"] for s in samples if "loadP50" in s]
+        p99s = [s["loadP99"] for s in samples if "loadP99" in s]
         report["loadP50Median"] = statistics.median(p50s) if p50s else None
+        report["loadP99Median"] = statistics.median(p99s) if p99s else None
         report["overrunsTotal"] = sum(s.get("overruns", 0) for s in samples)
-        headline = (f"load p50 median {report['loadP50Median']:.3f} "
-                    f"overruns {report['overrunsTotal']}"
+        report["startupOverrunsTotal"] = sum(s.get("startupOverruns", 0) for s in samples)
+        headline = (f"steady p50 {report['loadP50Median']:.3f} "
+                    f"p99 {report['loadP99Median']:.3f} "
+                    f"overruns {report['overrunsTotal']} "
+                    f"| startup overruns {report['startupOverrunsTotal']} "
+                    f"(first {args.warmup}s, excluded)"
                     if p50s else "no callback timings in capture")
 
     print(f"\n{cfg['model']} {args.mode}: {headline}")
@@ -606,6 +638,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--seconds", type=int, default=20,
                     help="render duration, minimum 20")
     sp.add_argument("--repeats", type=int, default=3)
+    # 8s comfortably covers the JIT warm-up on an M3 Max; raise it on slower
+    # hardware if startupOverruns keeps leaking into the steady-state window.
+    sp.add_argument("--warmup", type=float, default=8.0,
+                    help="seconds excluded from the steady-state figures")
     sp.add_argument("--output", help="write the JSON report here")
     sp.add_argument("--save-baseline", action="store_true")
     sp.add_argument("--check", action="store_true", help="compare against the baseline")

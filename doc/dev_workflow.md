@@ -137,9 +137,43 @@ on. They are machine-specific, so `--check` is a local gate, not a CI one — an
 only slowdowns fail it. Expect a few percent of run-to-run noise; compare on an
 otherwise idle machine.
 
-The first callbacks of any run include JIT compilation and show enormous load
-values. That is why the headline numbers are medians, and why `loadMax` on its
-own is not a regression signal.
+### Warm-up window
+
+`--warmup` (default 8s) splits each run. Boot and DSP JIT make the opening
+seconds mildly expensive and noisy — measured peak about 2.9x budget — and
+folding them into the totals made the overrun count useless: three repeats of
+one build configuration produced 55, 86 and 108 overruns. The headline figures
+cover the steady state; the window is reported separately as
+`startupOverruns` / `startupLoadMax`, never merged in.
+
+### Known MD defect: ~150 ms lock waits around 16 s
+
+Machinedrum, and only Machinedrum, shows two isolated callbacks of roughly
+150 ms about 16 seconds after instantiation, some 375 ms apart. At a 128-sample
+budget that is 57x over, i.e. an audible dropout on every first run. MM's
+`loadMax` in the same scenario stays at 1.3–1.6.
+
+It is **not** JIT. A capture with `GEARMULATOR_RT_INSTRUMENTATION=1` attributes
+it to the device lock:
+
+```
+t=16.314s dur=155.65ms device=1.39ms lockWait=154.18ms jitLive=0
+t=16.695s dur=143.57ms device=1.12ms lockWait=142.38ms jitLive=24
+```
+
+Actual emulation was 1.4 ms; the rest was waiting. JIT-heavy callbacks peak at
+5.8 ms and are unrelated.
+
+The holder is `AudioPluginAudioProcessor::serviceFactoryInitialization()` in
+`mdJucePlugin/mdPluginProcessor.cpp`. It already keeps cache encoding,
+filesystem writes and replacement construction outside the lock, but both of
+its locked sections call `Device::getState(StateTypeGlobal)`, which serializes
+the full MD image. The second call exists only to detect whether state changed
+while the lock was dropped, by comparing the entire serialized blob. The
+375 ms gap between the two spikes is the unlocked work between them.
+
+Because this is reproducible and isolated, `loadMax` alone is not a regression
+signal on MD — use `loadP50` and `loadP99`.
 
 ## Promoting a scenario into a gate
 
