@@ -4,7 +4,7 @@
 
 #include <memory>
 #include <optional>
-namespace mcpServer { class McpPluginServer; }
+namespace mcpServer { class McpPluginServer; class McpServer; }
 
 namespace jucePluginEditorLib
 {
@@ -52,6 +52,13 @@ namespace jucePluginEditorLib
 		void setMcpServerEnabled(bool _enabled);
 
 	protected:
+		// Products may expose device-specific MCP tools. The base constructor can
+		// start the server before the derived vtable exists, so a derived class
+		// that overrides this MUST call registerProductMcpToolsOnce() at the end
+		// of its own constructor. Registration is idempotent per server start.
+		virtual void registerProductMcpTools(mcpServer::McpServer&) {}
+		void registerProductMcpToolsOnce();
+
 		enum class ConfigMode
 		{
 			Persistent,
@@ -71,6 +78,7 @@ namespace jucePluginEditorLib
 
 		std::unique_ptr<PluginEditorState> m_editorState;
 
+		bool m_productMcpToolsRegistered = false;
 		juce::PropertiesFile::Options m_configOptions;
 		juce::PropertiesFile m_config;
 

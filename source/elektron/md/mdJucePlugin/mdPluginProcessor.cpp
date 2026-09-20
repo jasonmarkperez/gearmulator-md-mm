@@ -3,6 +3,7 @@
 #include "mdController.h"
 #include "mdPluginEditorState.h"
 #include "mdStorageImage.h"
+#include "mdMcpPanelTools.h"
 
 // ReSharper disable once CppUnusedIncludeDirective
 #include "BinaryData.h"
@@ -423,6 +424,9 @@ namespace mdJucePlugin
 		// The environment switch is also useful in hosts without an open editor.
 		if(getPlugin().getRealtimeInstrumentation().isEnabled())
 			setPerformanceDiagnosticsEnabled(true);
+		// The base constructor may already have started the MCP server, before
+		// this class' vtable existed. Register the product tools now.
+		registerProductMcpToolsOnce();
 	}
 
 	juce::AudioProcessor::BusesProperties AudioPluginAudioProcessor::createBusesProperties()
@@ -881,5 +885,10 @@ namespace mdJucePlugin
 	pluginLib::Controller* AudioPluginAudioProcessor::createController()
 	{
 		return new mdJucePlugin::Controller(*this);
+	}
+
+	void AudioPluginAudioProcessor::registerProductMcpTools(mcpServer::McpServer& _server)
+	{
+		registerPanelTools(_server, *this);
 	}
 }

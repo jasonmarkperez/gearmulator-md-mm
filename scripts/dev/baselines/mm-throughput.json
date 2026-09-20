@@ -1,0 +1,34 @@
+{
+  "schema": "gearmulator-dev-perf-v1",
+  "product": "MM",
+  "mode": "throughput",
+  "config": "Release",
+  "rate": 48000,
+  "block": 128,
+  "seconds": 20,
+  "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "samples": [
+    {
+      "repeat": 0,
+      "wallSeconds": 13.114127750042826,
+      "xRealtime": 1.5250728360439136,
+      "callbacks": 7500,
+      "loadP50": 0.6326953125000001,
+      "loadP99": 1.078797,
+      "loadMax": 5.881921875,
+      "overruns": 81
+    },
+    {
+      "repeat": 1,
+      "wallSeconds": 13.238490291987546,
+      "xRealtime": 1.5107462829129985,
+      "callbacks": 7500,
+      "loadP50": 0.6389141250000001,
+      "loadP99": 1.0245315000000002,
+      "loadMax": 2.665546875,
+      "overruns": 84
+    }
+  ],
+  "xRealtimeMedian": 1.517909559478456
+}

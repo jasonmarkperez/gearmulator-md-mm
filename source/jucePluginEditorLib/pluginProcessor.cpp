@@ -280,14 +280,28 @@ namespace jucePluginEditorLib
 		{
 			LOGNET(networkLib::LogLevel::Info, "MCP server stopped for plugin " << getProperties().name);
 			m_mcpServer.reset();
+			m_productMcpToolsRegistered = false;
 		}
+	}
+
+	void Processor::registerProductMcpToolsOnce()
+	{
+		if (!m_mcpServer || m_productMcpToolsRegistered)
+			return;
+		m_productMcpToolsRegistered = true;
+		registerProductMcpTools(m_mcpServer->getServer());
 	}
 
 	void Processor::setMcpServerEnabled(const bool _enabled)
 	{
-		if (_enabled)
-			startMcpServer();
-		else
+		if (!_enabled)
+		{
 			stopMcpServer();
+			return;
+		}
+		startMcpServer();
+		// Safe here: the object is fully constructed, so the product override
+		// resolves. The constructor path registers from the derived constructor.
+		registerProductMcpToolsOnce();
 	}
 }

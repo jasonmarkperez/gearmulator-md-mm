@@ -65,6 +65,9 @@ namespace mdJucePlugin
 		void loadChunkData(baseLib::ChunkReader& _reader) override;
 		bool loadCustomData(const std::vector<uint8_t>& _sourceBuffer) override;
 
+	protected:
+		void registerProductMcpTools(mcpServer::McpServer& _server) override;
+
 	private:
 		static BusesProperties createBusesProperties();
 		bool isBusesLayoutSupported(const BusesLayout& _layout) const override;

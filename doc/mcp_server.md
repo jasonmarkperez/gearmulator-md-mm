@@ -470,6 +470,37 @@ No parameters required.
 
 ---
 
+### Front Panel (Gearmulator MD / MM only)
+
+#### `get_front_panel`
+
+Get the decoded Elektron front panel: the reconstructed 128x64 LCD framebuffer, the LED banks, and the classified LCD page. Reads emulated panel state through the device lock, so unlike the DOM tools it works whether or not the editor window is open.
+
+Prefer this over `screenshot` for assertions. The LCD is drawn as a bitmap, so the DOM carries none of its content, and screenshot comparisons break on renderer, HiDPI and skin changes.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `lcd` | boolean | no | Include the framebuffer as 64 ASCII rows (default: true) |
+| `dataEntrySwitchHeld` | boolean | no | Classify the page as if a DATA ENTRY encoder switch is held (default: false) |
+
+Returns:
+
+| Field | Description |
+|---|---|
+| `model` | `"Machinedrum"` or `"Monomachine"` |
+| `hardwareEpoch` | Increments when the emulated machine is replaced; use it to detect a restore |
+| `litPixels`, `panelBytes`, `tileWrites`, `ledCommands` | Panel stream counters; `litPixels > 0` means the firmware has drawn something |
+| `ledBanks` | Raw active-low bank bytes `0x20`–`0x2d`, each with `raw` and `written` |
+| `steps` | 16 entries; booleans on MD, colour strings (`off`/`green`/`red`/`yellow`) on MM |
+| `drums` | 16 booleans, sound-selection / DRUM LEDs |
+| `status`, `mode` | Named booleans; `true` = lit |
+| `page` | `{surface, layout, activeEncoderMask, identityToken}`, or `null` when the current screen is not a classified edit page (the boot logo, for example) |
+| `lcd`, `lcdWidth`, `lcdHeight` | 64 rows of 128 characters, `#` = lit pixel (omitted when `lcd` is false) |
+
+`scripts/dev/dev.py panel` prints this in readable form; see `doc/dev_workflow.md`.
+
+---
+
 ### Patch Manager
 
 These tools interact with the patch manager database for browsing, loading, saving, and renaming presets. They require the plugin editor window to be open.

@@ -19,3 +19,8 @@ _copilot.bat
 target/logs/
 claude*.bat
 .mcp.json
+/scripts/dev/__pycache__/
+
+# Proprietary Elektron firmware. Never distribute these; scripts/dev/dev.py
+# discovers them here by fingerprint.
+/roms/
