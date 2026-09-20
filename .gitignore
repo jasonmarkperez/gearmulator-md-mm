@@ -24,3 +24,6 @@ claude*.bat
 # Proprietary Elektron firmware. Never distribute these; scripts/dev/dev.py
 # discovers them here by fingerprint.
 /roms/
+
+# Subagent-driven-development scratch (ledger, briefs, review packages)
+/.superpowers/
