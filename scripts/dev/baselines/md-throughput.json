@@ -6,39 +6,49 @@
   "rate": 48000,
   "block": 128,
   "seconds": 20,
+  "warmupSeconds": 8.0,
   "host": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
   "machine": "arm64",
   "samples": [
     {
       "repeat": 0,
-      "wallSeconds": 11.614111999981105,
-      "xRealtime": 1.722042976684962,
-      "callbacks": 7500,
-      "loadP50": 0.505398375,
-      "loadP99": 0.8089061250000001,
-      "loadMax": 56.06100000000001,
-      "overruns": 12
+      "wallSeconds": 11.211491791007575,
+      "xRealtime": 1.783883926672581,
+      "callbacks": 4500,
+      "loadP50": 0.5098125,
+      "loadP99": 0.7901561249999999,
+      "loadMax": 1.6985936249999998,
+      "overruns": 1,
+      "warmupSeconds": 8.0,
+      "startupOverruns": 5,
+      "startupLoadMax": 1.763734125
     },
     {
       "repeat": 1,
-      "wallSeconds": 11.393185583001468,
-      "xRealtime": 1.7554352866716945,
-      "callbacks": 7500,
-      "loadP50": 0.49883587500000004,
-      "loadP99": 0.7989843750000001,
-      "loadMax": 58.825468875,
-      "overruns": 14
+      "wallSeconds": 11.138067667023279,
+      "xRealtime": 1.7956436069439978,
+      "callbacks": 4500,
+      "loadP50": 0.511867125,
+      "loadP99": 0.7887967499999999,
+      "loadMax": 3.249969,
+      "overruns": 5,
+      "warmupSeconds": 8.0,
+      "startupOverruns": 6,
+      "startupLoadMax": 2.1281561250000003
     },
     {
       "repeat": 2,
-      "wallSeconds": 11.445700166979805,
-      "xRealtime": 1.7473810870652426,
-      "callbacks": 7500,
-      "loadP50": 0.5017499999999999,
-      "loadP99": 0.806281125,
-      "loadMax": 55.515421875,
-      "overruns": 11
+      "wallSeconds": 11.072740792005789,
+      "xRealtime": 1.8062375319432606,
+      "callbacks": 4500,
+      "loadP50": 0.5090000625,
+      "loadP99": 0.7867968750000001,
+      "loadMax": 2.5194375,
+      "overruns": 6,
+      "warmupSeconds": 8.0,
+      "startupOverruns": 4,
+      "startupLoadMax": 1.6615158750000003
     }
   ],
-  "xRealtimeMedian": 1.7473810870652426
+  "xRealtimeMedian": 1.7956436069439978
 }

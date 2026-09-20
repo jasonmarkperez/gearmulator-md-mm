@@ -90,6 +90,32 @@ namespace md
 		bool isValid() const override;
 		bool getState(std::vector<uint8_t>& _state, synthLib::StateType _type) override;
 		bool setState(const std::vector<uint8_t>& _state, synthLib::StateType _type) override;
+
+		// The raw inputs getState() serializes. Capturing them is a handful of
+		// memcpys -- measured 0.26ms for the 9 MiB of patch RAM and flash --
+		// while encoding them costs about 150ms on Machinedrum. Callers that
+		// must not hold the device lock across that encode capture here,
+		// release the lock, then call encodeStateInputs(). Comparing two
+		// captures also replaces comparing two encoded blobs when detecting
+		// concurrent modification.
+		struct StateInputs
+		{
+			MachineModel model = MachineModel::Machinedrum;
+			std::vector<uint8_t> patchRam;
+			std::vector<uint8_t> romBaseline;
+			std::vector<uint8_t> userFlash;      // Monomachine
+			std::vector<uint8_t> flashData;      // Machinedrum
+			std::vector<uint8_t> factoryBaseline;
+			bool hasFactoryBaseline = false;
+			FlashSectorOverlay pendingOverlay;
+			bool hasPendingOverlay = false;
+
+			bool operator==(const StateInputs& _other) const;
+			bool operator!=(const StateInputs& _other) const { return !(*this == _other); }
+		};
+		void captureStateInputs(StateInputs& _inputs);
+		static bool encodeStateInputs(std::vector<uint8_t>& _state,
+			const StateInputs& _inputs, synthLib::StateType _type);
 		bool supportsStateTransactions() const override { return true; }
 		std::unique_ptr<synthLib::Device::StateTransaction> beginStateTransaction(
 			std::shared_ptr<const std::vector<uint8_t>> _state,

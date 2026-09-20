@@ -146,14 +146,14 @@ one build configuration produced 55, 86 and 108 overruns. The headline figures
 cover the steady state; the window is reported separately as
 `startupOverruns` / `startupLoadMax`, never merged in.
 
-### Known MD defect: ~150 ms lock waits around 16 s
+### Fixed: MD ~150 ms lock waits around 16 s
 
-Machinedrum, and only Machinedrum, shows two isolated callbacks of roughly
-150 ms about 16 seconds after instantiation, some 375 ms apart. At a 128-sample
-budget that is 57x over, i.e. an audible dropout on every first run. MM's
-`loadMax` in the same scenario stays at 1.3–1.6.
+Machinedrum, and only Machinedrum, used to show two isolated callbacks of
+roughly 150 ms about 16 seconds after instantiation, some 375 ms apart — 57x
+over a 128-sample budget, an audible dropout on every first run. MM never
+exceeded 1.6x in the same scenario.
 
-It is **not** JIT. A capture with `GEARMULATOR_RT_INSTRUMENTATION=1` attributes
+It was not JIT. A capture with `GEARMULATOR_RT_INSTRUMENTATION=1` attributed
 it to the device lock:
 
 ```
@@ -161,19 +161,28 @@ t=16.314s dur=155.65ms device=1.39ms lockWait=154.18ms jitLive=0
 t=16.695s dur=143.57ms device=1.12ms lockWait=142.38ms jitLive=24
 ```
 
-Actual emulation was 1.4 ms; the rest was waiting. JIT-heavy callbacks peak at
-5.8 ms and are unrelated.
+Emulation took 1.4 ms; the rest was waiting. JIT-heavy callbacks peak at
+5.8 ms and were unrelated.
 
-The holder is `AudioPluginAudioProcessor::serviceFactoryInitialization()` in
-`mdJucePlugin/mdPluginProcessor.cpp`. It already keeps cache encoding,
-filesystem writes and replacement construction outside the lock, but both of
-its locked sections call `Device::getState(StateTypeGlobal)`, which serializes
-the full MD image. The second call exists only to detect whether state changed
-while the lock was dropped, by comparing the entire serialized blob. The
-375 ms gap between the two spikes is the unlocked work between them.
+`AudioPluginAudioProcessor::serviceFactoryInitialization()` already kept cache
+encoding, filesystem writes and replacement construction outside the lock, but
+both of its locked sections called `Device::getState(StateTypeGlobal)`. Direct
+measurement showed why that mattered: copying the 9 MiB of patch RAM and flash
+took **0.26 ms**, while encoding it took **148 ms**. The second call existed
+only to detect concurrent modification, by comparing the whole re-encoded blob.
 
-Because this is reproducible and isolated, `loadMax` alone is not a regression
-signal on MD — use `loadP50` and `loadP99`.
+`md::Device` now separates the two halves. `captureStateInputs()` copies the
+raw inputs and is what runs under the lock; `encodeStateInputs()` is pure and
+runs after the lock is released. `getState()` is implemented as capture plus
+encode, so there is still one encoding path. The commit guard compares two
+captures instead of two encoded blobs — same guarantee, ~0.3 ms instead of
+~150 ms held against the audio thread.
+
+Result: MD `loadMax` fell from 57.7 to 1.70–1.80, and the run still logs
+`[MD] factory flash preparation complete; rebooted in process`, so the work
+still happens. A state-generation counter was considered and rejected: patch
+RAM is written from the CPU store path, so tracking it would tax the hot
+emulation loop to solve a problem that costs nothing to solve this way.
 
 ## Promoting a scenario into a gate
 

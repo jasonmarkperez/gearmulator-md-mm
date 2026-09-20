@@ -231,6 +231,79 @@ namespace md
 		return m_hardware->isValid();
 	}
 
+	bool Device::StateInputs::operator==(const StateInputs& _other) const
+	{
+		return model == _other.model
+			&& hasFactoryBaseline == _other.hasFactoryBaseline
+			&& hasPendingOverlay == _other.hasPendingOverlay
+			&& patchRam == _other.patchRam
+			&& romBaseline == _other.romBaseline
+			&& userFlash == _other.userFlash
+			&& flashData == _other.flashData
+			&& factoryBaseline == _other.factoryBaseline
+			&& pendingOverlay.valid == _other.pendingOverlay.valid
+			&& pendingOverlay.romFingerprint == _other.pendingOverlay.romFingerprint
+			&& pendingOverlay.baselineFingerprint == _other.pendingOverlay.baselineFingerprint
+			&& pendingOverlay.flashSize == _other.pendingOverlay.flashSize
+			&& pendingOverlay.sectors == _other.pendingOverlay.sectors
+			&& pendingOverlay.data == _other.pendingOverlay.data;
+	}
+
+	void Device::captureStateInputs(StateInputs& _inputs)
+	{
+		auto* stateHardware = m_hardware.get();
+		if(m_deferredPreparedState && m_deferredPreparedState->m_hardware)
+			stateHardware = m_deferredPreparedState->m_hardware.get();
+
+		_inputs.model = m_model;
+		_inputs.patchRam = stateHardware->copyPatchRam();
+		// Copied rather than referenced: the encode runs after the caller has
+		// released the device lock, by which time this Hardware may have been
+		// replaced. 8 MiB of memcpy is still three orders of magnitude cheaper
+		// than encoding under the lock.
+		_inputs.romBaseline = stateHardware->flashBaseline();
+
+		if(m_model == MachineModel::Monomachine)
+		{
+			_inputs.userFlash = stateHardware->copyUserFlash();
+			return;
+		}
+
+		_inputs.hasFactoryBaseline =
+			stateHardware->copyFactoryFlashBaseline(_inputs.factoryBaseline);
+		if(_inputs.hasFactoryBaseline)
+		{
+			_inputs.flashData = stateHardware->copyFlashData();
+			return;
+		}
+		_inputs.hasPendingOverlay =
+			stateHardware->copyPendingFlashOverlay(_inputs.pendingOverlay);
+		if(_inputs.hasPendingOverlay)
+			return;
+		// If interaction happened before the first machine-local baseline was
+		// captured, preserve a complete flash image. An absolute sector set records
+		// ROM-equal deletions and lets the replacement boot coherently without waiting
+		// for another factory-initialization pass.
+		_inputs.flashData = stateHardware->copyFlashData();
+	}
+
+	bool Device::encodeStateInputs(std::vector<uint8_t>& _state,
+		const StateInputs& _inputs, const synthLib::StateType _type)
+	{
+		if(_inputs.model == MachineModel::Monomachine)
+			return encodeState(_state, _inputs.patchRam, _inputs.model, _type,
+				_inputs.userFlash);
+		if(_inputs.hasFactoryBaseline)
+			return encodeStateWithFactoryBaseline(_state, _inputs.patchRam,
+				_inputs.flashData, _inputs.factoryBaseline, _inputs.romBaseline,
+				_inputs.model, _type);
+		if(_inputs.hasPendingOverlay)
+			return encodeState(_state, _inputs.patchRam, _inputs.pendingOverlay,
+				_inputs.romBaseline, _inputs.model, _type);
+		return encodeState(_state, _inputs.patchRam, _inputs.flashData,
+			_inputs.romBaseline, _inputs.romBaseline, _inputs.model, _type);
+	}
+
 	bool Device::getState(std::vector<uint8_t>& _state, synthLib::StateType _type)
 	{
 		if(isProjectStateRestorePending() && _type == m_requestedStateType
@@ -240,28 +313,9 @@ namespace md
 			return true;
 		}
 
-		auto* stateHardware = m_hardware.get();
-		if(m_deferredPreparedState && m_deferredPreparedState->m_hardware)
-			stateHardware = m_deferredPreparedState->m_hardware.get();
-		const auto patchRam = stateHardware->copyPatchRam();
-		if(m_model == MachineModel::Monomachine)
-			return encodeState(_state, patchRam, m_model, _type,
-				stateHardware->copyUserFlash());
-		std::vector<uint8_t> factoryBaseline;
-		if(stateHardware->copyFactoryFlashBaseline(factoryBaseline))
-			return encodeStateWithFactoryBaseline(_state, patchRam,
-				stateHardware->copyFlashData(),
-				factoryBaseline, stateHardware->flashBaseline(), m_model, _type);
-		FlashSectorOverlay pending;
-		if(stateHardware->copyPendingFlashOverlay(pending))
-			return encodeState(_state, patchRam, pending,
-				stateHardware->flashBaseline(), m_model, _type);
-		// If interaction happened before the first machine-local baseline was
-		// captured, preserve a complete flash image. An absolute sector set records
-		// ROM-equal deletions and lets the replacement boot coherently without waiting
-		// for another factory-initialization pass.
-		return encodeState(_state, patchRam, stateHardware->copyFlashData(),
-			stateHardware->flashBaseline(), stateHardware->flashBaseline(), m_model, _type);
+		StateInputs inputs;
+		captureStateInputs(inputs);
+		return encodeStateInputs(_state, inputs, _type);
 	}
 
 	bool Device::setState(const std::vector<uint8_t>& _state, synthLib::StateType _type)

@@ -12,33 +12,46 @@
   "samples": [
     {
       "repeat": 0,
-      "wallSeconds": 20.283830916974694,
-      "xRealtime": 0.9860070359422506,
+      "wallSeconds": 20.293953666987363,
+      "xRealtime": 0.9855152095145686,
       "callbacks": 4500,
-      "loadP50": 0.5827265625,
-      "loadP99": 1.098828375,
-      "loadMax": 57.880500000000005,
-      "overruns": 76,
+      "loadP50": 0.6351170625,
+      "loadP99": 0.9805155,
+      "loadMax": 1.795640625,
+      "overruns": 36,
       "warmupSeconds": 8.0,
-      "startupOverruns": 46,
-      "startupLoadMax": 1.7510313750000002
+      "startupOverruns": 57,
+      "startupLoadMax": 2.097124875
     },
     {
       "repeat": 1,
-      "wallSeconds": 20.27314495900646,
-      "xRealtime": 0.9865267594367438,
+      "wallSeconds": 20.27041095896857,
+      "xRealtime": 0.9866598186136465,
       "callbacks": 4500,
-      "loadP50": 0.5723671875,
-      "loadP99": 1.081875,
-      "loadMax": 56.71010925,
-      "overruns": 73,
+      "loadP50": 0.6097344375,
+      "loadP99": 1.006906125,
+      "loadMax": 1.7205000000000001,
+      "overruns": 47,
       "warmupSeconds": 8.0,
-      "startupOverruns": 39,
-      "startupLoadMax": 1.6994531250000002
+      "startupOverruns": 40,
+      "startupLoadMax": 1.9826561249999999
+    },
+    {
+      "repeat": 2,
+      "wallSeconds": 20.267024917004164,
+      "xRealtime": 0.9868246613354618,
+      "callbacks": 4500,
+      "loadP50": 0.6178906875,
+      "loadP99": 1.02125025,
+      "loadMax": 1.71346875,
+      "overruns": 54,
+      "warmupSeconds": 8.0,
+      "startupOverruns": 27,
+      "startupLoadMax": 2.064625125
     }
   ],
-  "loadP50Median": 0.577546875,
-  "loadP99Median": 1.0903516875,
-  "overrunsTotal": 149,
-  "startupOverrunsTotal": 85
+  "loadP50Median": 0.6178906875,
+  "loadP99Median": 1.006906125,
+  "overrunsTotal": 137,
+  "startupOverrunsTotal": 124
 }

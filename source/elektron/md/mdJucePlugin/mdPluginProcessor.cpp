@@ -550,6 +550,7 @@ namespace mdJucePlugin
 		md::Device* liveDevice = nullptr;
 		uint64_t liveEpoch = 0;
 		std::vector<uint8_t> originalState;
+		md::Device::StateInputs originalInputs;
 		std::string cacheFilename;
 		md::FactoryFlashSnapshot factoryFlash;
 		std::string cacheError;
@@ -579,8 +580,9 @@ namespace mdJucePlugin
 			if(hardware.isFactoryFlashCacheReady())
 				(void)device->captureFactoryFlashCachePersistence(cacheFilename,
 					factoryFlash, cacheError);
-			if(!device->getState(originalState, synthLib::StateTypeGlobal))
-				state = State::Waiting;
+			// Capture only. Encoding this costs ~150ms, and doing it here made
+			// the audio thread wait that long for the device lock.
+			device->captureStateInputs(originalInputs);
 		});
 
 		if(state == State::NotNeeded)
@@ -589,6 +591,13 @@ namespace mdJucePlugin
 			return false;
 		}
 		if(state != State::Ready || !preparationContext || !liveDevice)
+		{
+			startTimer(250);
+			return false;
+		}
+
+		if(!md::Device::encodeStateInputs(originalState, originalInputs,
+			synthLib::StateTypeGlobal))
 		{
 			startTimer(250);
 			return false;
@@ -619,9 +628,12 @@ namespace mdJucePlugin
 				if(device != liveDevice || !device
 					|| device->hardwareEpoch() != liveEpoch)
 					return false;
-				std::vector<uint8_t> currentState;
-				if(!device->getState(currentState, synthLib::StateTypeGlobal)
-					|| currentState != originalState)
+				// Detect modification while the lock was dropped by comparing
+				// the raw inputs, not a re-encoded blob: same guarantee, ~0.3ms
+				// instead of ~150ms held against the audio thread.
+				md::Device::StateInputs currentInputs;
+				device->captureStateInputs(currentInputs);
+				if(currentInputs != originalInputs)
 					return false;
 				return device->commitPreparedState(*prepared);
 			});
