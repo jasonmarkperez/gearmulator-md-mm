@@ -96,7 +96,8 @@ def summarize(blocks: list[Block], rate: int, block_frames: int,
 
 # Every axis that makes two runs incomparable. A delta across different rates,
 # block sizes or scenarios is not a regression signal, it is a category error.
-CONFIG_KEYS = ("product", "mode", "scenario", "rate", "block", "warmupSeconds")
+CONFIG_KEYS = ("product", "mode", "scenario", "rate", "block", "seconds",
+               "warmupSeconds")
 
 
 def baseline_name(product: str, mode: str, scenario: str, rate: int,

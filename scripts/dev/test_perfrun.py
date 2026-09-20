@@ -117,7 +117,8 @@ class BaselineIdentityTest(unittest.TestCase):
 
     def config(self, **overrides) -> dict:
         base = {"product": "MD", "mode": "paced", "scenario": "notes",
-                "rate": 48000, "block": 128, "warmupSeconds": 8.0}
+                "rate": 48000, "block": 128, "seconds": 20,
+                "warmupSeconds": 8.0}
         base.update(overrides)
         return base
 
@@ -142,6 +143,17 @@ class BaselineIdentityTest(unittest.TestCase):
         del legacy["scenario"]
         self.assertEqual(
             perfrun.config_mismatch(self.config(), legacy), ["scenario"])
+
+    def test_a_different_seconds_value_is_refused(self) -> None:
+        # A longer/shorter render is a different workload: comparing its
+        # xRealtime (which folds in fixed process/boot startup cost) against
+        # a differently-timed baseline produces a spurious delta.
+        self.assertEqual(
+            perfrun.config_mismatch(self.config(), self.config(seconds=60)),
+            ["seconds"])
+
+    def test_config_keys_includes_seconds(self) -> None:
+        self.assertIn("seconds", perfrun.CONFIG_KEYS)
 
 
 if __name__ == "__main__":

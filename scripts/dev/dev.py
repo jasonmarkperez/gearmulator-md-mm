@@ -500,6 +500,13 @@ def cmd_perf(args) -> int:
         key, args.mode, report["scenario"], args.rate, args.block)
     if args.save_baseline:
         BASELINES.mkdir(parents=True, exist_ok=True)
+        if baseline_file.is_file():
+            existing = json.loads(baseline_file.read_text(encoding="utf-8"))
+            mismatch = perfrun.config_mismatch(report, existing)
+            if mismatch:
+                fail(f"baseline {baseline_file.name} was recorded with a "
+                     f"different {', '.join(mismatch)}; delete "
+                     f"{baseline_file} first if overwriting it is intended")
         baseline_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"saved baseline {baseline_file}")
         return 0
