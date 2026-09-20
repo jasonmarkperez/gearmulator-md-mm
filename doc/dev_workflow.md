@@ -35,10 +35,13 @@ The dev configuration deliberately differs from the release one:
 | `CMAKE_OSX_ARCHITECTURES` | `arm64` | the root project forces universal; the x86_64 slice is dead weight on a dev box |
 | Synths | Elektron only | the other six emulations are not being worked on |
 | Formats | Standalone + VST3 | Standalone is the surface under test, VST3 is what `latency_host` measures |
+| `GEARMULATOR_MDMM_APPLE_THINLTO` + `_OPTIMIZE_DSP` | `ON` | both are on for every shipping build (`scripts/macos/build_mdmm.sh`); without them a dev Release profiles a configuration nobody ships |
 
 Use `Debug` for compile checks. Use `Release` for anything timed: `base.cmake`
 applies `-Ofast -funroll-loops` only to `Release`, so timings from any other
-configuration are meaningless.
+configuration are meaningless. The two Apple optimization options are also
+Release-only, and worth roughly 9% throughput on MD — see
+`doc/mdmm-apple-optimization.md` for the measurements.
 
 ## Test
 

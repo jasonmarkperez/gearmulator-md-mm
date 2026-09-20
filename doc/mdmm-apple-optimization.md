@@ -22,6 +22,31 @@ is not the expected build-local directory.
 | `GEARMULATOR_MDMM_APPLE_PGO_MODE` | `none` | Select `none`, `generate`, or `use` for profile-guided optimization. |
 | `GEARMULATOR_MDMM_APPLE_PGO_PROFILE` | Empty | Path to the merged profile for `use` mode. |
 
+## Measured effect
+
+Apple M3 Max, macOS 26.6.2, arm64-only Release, VST3 through `latency_host` at
+48 kHz with 128-sample blocks, three 20-second repeats per cell. The control was
+measured again after the variants; its drift was at most 0.5%, so the
+differences below are well outside run-to-run noise. Reproduce with
+`scripts/dev/dev.py perf` (see `doc/dev_workflow.md`).
+
+| Metric | Neither | ThinLTO | ThinLTO + DSP |
+| --- | --- | --- | --- |
+| MD throughput (xRealtime) | 1.600 | 1.701 (+6.3%) | 1.742 (+8.9%) |
+| MM throughput (xRealtime) | 1.527 | 1.637 (+7.2%) | 1.639 (+7.3%) |
+| MD paced load p50 | 0.633 | 0.604 | 0.566 (-10.5%) |
+| MD paced load p99 | 1.046 | 1.016 | 1.010 |
+
+Extending the optimization to the DSP libraries is worth a further 2.4
+percentage points of MD throughput but essentially nothing on MM (+0.1). The
+cause has not been investigated; it is not safe to assume it generalizes to
+other workloads or hosts.
+
+Overrun counts are not usable as a discriminator here: within a single variant
+three repeats produced 55, 86 and 108 overruns per 7500 callbacks, because the
+count is dominated by the JIT warm-up transient at the start of each run. Use
+p50 and p99.
+
 `build_mdmm.sh` defaults to `arm64;x86_64` and `pgo_mode=none`, producing
 `Gearmulator-Elektron-macOS-Universal.zip`. Those defaults are also explicit in
 the hosted workflow. A local, guarded arm64 PGO candidate uses the same build,

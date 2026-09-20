@@ -85,6 +85,12 @@ CONFIGURE_ARGS = [
     "-Dgearmulator_BUILD_JUCEPLUGIN_CLAP=OFF",
     "-Dgearmulator_BUILD_JUCEPLUGIN_LV2=OFF",
     "-Dgearmulator_BUILD_FX_PLUGIN=OFF",
+    # Match scripts/macos/build_mdmm.sh, which enables both for every shipping
+    # build. Measured on an M3 Max these are worth +8.9% throughput and -10.5%
+    # callback load on MD, so a dev Release without them profiles a
+    # configuration nobody ships. Release-only; Debug builds are unaffected.
+    "-DGEARMULATOR_MDMM_APPLE_THINLTO=ON",
+    "-DGEARMULATOR_MDMM_APPLE_OPTIMIZE_DSP=ON",
 ]
 
 

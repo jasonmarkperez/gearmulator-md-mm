@@ -11,24 +11,34 @@
   "samples": [
     {
       "repeat": 0,
-      "wallSeconds": 13.114127750042826,
-      "xRealtime": 1.5250728360439136,
+      "wallSeconds": 12.231384083046578,
+      "xRealtime": 1.6351379258641043,
       "callbacks": 7500,
-      "loadP50": 0.6326953125000001,
-      "loadP99": 1.078797,
-      "loadMax": 5.881921875,
-      "overruns": 81
+      "loadP50": 0.5881329375,
+      "loadP99": 0.9857969999999999,
+      "loadMax": 2.2004842499999997,
+      "overruns": 72
     },
     {
       "repeat": 1,
-      "wallSeconds": 13.238490291987546,
-      "xRealtime": 1.5107462829129985,
+      "wallSeconds": 12.125601582985837,
+      "xRealtime": 1.6494027008163625,
       "callbacks": 7500,
-      "loadP50": 0.6389141250000001,
-      "loadP99": 1.0245315000000002,
-      "loadMax": 2.665546875,
-      "overruns": 84
+      "loadP50": 0.5894296875,
+      "loadP99": 1.000422,
+      "loadMax": 2.668546875,
+      "overruns": 76
+    },
+    {
+      "repeat": 2,
+      "wallSeconds": 12.193128333019558,
+      "xRealtime": 1.6402681456110875,
+      "callbacks": 7500,
+      "loadP50": 0.5910547500000001,
+      "loadP99": 0.991453125,
+      "loadMax": 2.1970001249999997,
+      "overruns": 72
     }
   ],
-  "xRealtimeMedian": 1.517909559478456
+  "xRealtimeMedian": 1.6402681456110875
 }
