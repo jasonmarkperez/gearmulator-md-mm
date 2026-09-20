@@ -407,8 +407,9 @@ def cmd_perf(args) -> int:
              f"dev.py build --config Release --target latency_host "
              f"{'mdJucePlugin_VST3' if key == 'md' else 'mmJucePlugin_VST3'}")
 
-    if args.seconds < 20:
-        fail("latency_host requires --seconds >= 20")
+    problem = perfrun.validate_run(args.scenario, args.rate, args.block, args.seconds)
+    if problem:
+        fail(problem)
 
     out_dir = DEVROOT / key / "perf" / args.mode
     if out_dir.exists():
@@ -416,24 +417,13 @@ def cmd_perf(args) -> int:
     out_dir.mkdir(parents=True)
 
     env = stage_devroot(key, roms[key], enable_mcp=False)
-    paced = args.mode == "paced"
 
     samples = []
     for rep in range(args.repeats):
         prefix = out_dir / f"capture-{rep}"
-        cmd = [
-            host, plugin, prefix,
-            str(args.rate), str(args.block), str(args.seconds),
-            "-1",                       # no re-prepare
-            "fixed",                    # fixed block size
-            "-1" if paced else "0",     # offline-after: unpaced renders offline
-            "paced" if paced else "fast",
-            str(cfg["note"]),
-            str(args.block - 1),
-            "notes",
-            "messages",
-            "-1",                       # no state restore mid-run
-        ]
+        cmd = perfrun.host_command(
+            host, plugin, prefix, args.mode, args.scenario, args.rate,
+            args.block, args.seconds, cfg["note"])
         started = time.monotonic()
         run(cmd, env=env)
         wall = time.monotonic() - started
@@ -457,7 +447,7 @@ def cmd_perf(args) -> int:
         "schema": "gearmulator-dev-perf-v1",
         "product": cfg["model"],
         "mode": args.mode,
-        "scenario": "notes",  # TODO(task 5): replace with args.scenario
+        "scenario": args.scenario,
         "config": config,
         "rate": args.rate,
         "block": args.block,
@@ -594,6 +584,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--mode", default="throughput", choices=("throughput", "paced"))
     sp.add_argument("--rate", type=int, default=48000)
     sp.add_argument("--block", type=int, default=128)
+    sp.add_argument("--scenario", default="notes", choices=perfrun.SCENARIOS,
+                    help="workload: notes, chords, input (opens 2 input "
+                         "channels), or transport")
     # latency_host rejects runs shorter than 20s; it needs a warm-up window
     # before its measurement period is meaningful.
     sp.add_argument("--seconds", type=int, default=20,

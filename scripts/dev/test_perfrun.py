@@ -222,6 +222,46 @@ class CompareTest(unittest.TestCase):
         self.assertIn("loadP50Median", message)
 
 
+class HostCommandTest(unittest.TestCase):
+    def command(self, **overrides) -> list[str]:
+        kwargs = {"host": "/bin/host", "plugin": "/tmp/MD.vst3",
+                  "prefix": "/tmp/cap", "mode": "throughput",
+                  "scenario": "notes", "rate": 48000, "block_frames": 128,
+                  "seconds": 20, "note": 36}
+        kwargs.update(overrides)
+        return perfrun.host_command(**kwargs)
+
+    def test_positional_contract_matches_the_host_usage_string(self) -> None:
+        self.assertEqual(
+            self.command(),
+            ["/bin/host", "/tmp/MD.vst3", "/tmp/cap", "48000", "128", "20",
+             "-1", "fixed", "0", "fast", "36", "127", "notes", "messages", "-1"])
+
+    def test_paced_mode_selects_pacing_and_disables_the_offline_switch(self) -> None:
+        command = self.command(mode="paced")
+        self.assertEqual(command[8], "-1")
+        self.assertEqual(command[9], "paced")
+
+    def test_scenario_is_passed_through(self) -> None:
+        self.assertEqual(self.command(scenario="chords")[12], "chords")
+
+    def test_phase_stays_inside_the_block(self) -> None:
+        # latency_host requires 0 <= phase < block.
+        self.assertEqual(self.command(block_frames=64)[11], "63")
+
+
+class ValidateRunTest(unittest.TestCase):
+    def test_short_runs_are_rejected_before_launching_the_host(self) -> None:
+        self.assertIsNotNone(perfrun.validate_run("notes", 48000, 128, 10))
+        self.assertIsNone(perfrun.validate_run("notes", 48000, 128, 20))
+
+    def test_unknown_scenarios_are_rejected(self) -> None:
+        self.assertIsNotNone(perfrun.validate_run("wobble", 48000, 128, 20))
+
+    def test_a_block_of_one_leaves_no_room_for_a_nonzero_phase(self) -> None:
+        self.assertIsNone(perfrun.validate_run("notes", 48000, 1, 20))
+
+
 
 if __name__ == "__main__":
     unittest.main()
