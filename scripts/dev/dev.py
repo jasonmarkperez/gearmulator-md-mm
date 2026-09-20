@@ -457,6 +457,7 @@ def cmd_perf(args) -> int:
         "schema": "gearmulator-dev-perf-v1",
         "product": cfg["model"],
         "mode": args.mode,
+        "scenario": "notes",  # TODO(task 5): replace with args.scenario
         "config": config,
         "rate": args.rate,
         "block": args.block,
@@ -495,7 +496,8 @@ def cmd_perf(args) -> int:
         pathlib.Path(args.output).write_text(json.dumps(report, indent=2), encoding="utf-8")
         print(f"wrote {args.output}")
 
-    baseline_file = BASELINES / f"{key}-{args.mode}.json"
+    baseline_file = BASELINES / perfrun.baseline_name(
+        key, args.mode, report["scenario"], args.rate, args.block)
     if args.save_baseline:
         BASELINES.mkdir(parents=True, exist_ok=True)
         baseline_file.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -506,6 +508,10 @@ def cmd_perf(args) -> int:
         if not baseline_file.is_file():
             fail(f"no baseline at {baseline_file}; record one with --save-baseline")
         baseline = json.loads(baseline_file.read_text(encoding="utf-8"))
+        mismatch = perfrun.config_mismatch(report, baseline)
+        if mismatch:
+            fail(f"baseline {baseline_file.name} was recorded with a different "
+                 f"{', '.join(mismatch)}; re-record it with --save-baseline")
         return _compare(report, baseline, args.tolerance, args.mode)
 
     return 0

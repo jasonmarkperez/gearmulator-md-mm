@@ -103,5 +103,46 @@ class SummarizeTest(BlocksFixture):
         self.assertNotIn("xRenderOnly", summary)
 
 
+class BaselineIdentityTest(unittest.TestCase):
+    def test_baseline_name_distinguishes_every_workload_axis(self) -> None:
+        self.assertEqual(
+            perfrun.baseline_name("md", "paced", "notes", 48000, 128),
+            "md-paced-notes-48000-128.json")
+        self.assertNotEqual(
+            perfrun.baseline_name("md", "paced", "notes", 48000, 128),
+            perfrun.baseline_name("md", "paced", "notes", 48000, 512))
+        self.assertNotEqual(
+            perfrun.baseline_name("md", "paced", "notes", 48000, 128),
+            perfrun.baseline_name("md", "paced", "chords", 48000, 128))
+
+    def config(self, **overrides) -> dict:
+        base = {"product": "MD", "mode": "paced", "scenario": "notes",
+                "rate": 48000, "block": 128, "warmupSeconds": 8.0}
+        base.update(overrides)
+        return base
+
+    def test_identical_configurations_compare_cleanly(self) -> None:
+        self.assertEqual(
+            perfrun.config_mismatch(self.config(), self.config()), [])
+
+    def test_a_different_block_size_is_refused(self) -> None:
+        self.assertEqual(
+            perfrun.config_mismatch(self.config(), self.config(block=512)),
+            ["block"])
+
+    def test_every_differing_axis_is_named(self) -> None:
+        mismatch = perfrun.config_mismatch(
+            self.config(), self.config(rate=96000, scenario="chords"))
+        self.assertEqual(sorted(mismatch), ["rate", "scenario"])
+
+    def test_a_baseline_missing_an_axis_counts_as_a_mismatch(self) -> None:
+        # Pre-Task-3 baselines have no scenario field; they must be rejected
+        # rather than silently treated as matching.
+        legacy = self.config()
+        del legacy["scenario"]
+        self.assertEqual(
+            perfrun.config_mismatch(self.config(), legacy), ["scenario"])
+
+
 if __name__ == "__main__":
     unittest.main()

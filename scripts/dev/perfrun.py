@@ -92,3 +92,23 @@ def summarize(blocks: list[Block], rate: int, block_frames: int,
         })
 
     return result
+
+
+# Every axis that makes two runs incomparable. A delta across different rates,
+# block sizes or scenarios is not a regression signal, it is a category error.
+CONFIG_KEYS = ("product", "mode", "scenario", "rate", "block", "warmupSeconds")
+
+
+def baseline_name(product: str, mode: str, scenario: str, rate: int,
+                  block_frames: int) -> str:
+    return f"{product}-{mode}-{scenario}-{rate}-{block_frames}.json"
+
+
+def config_mismatch(report: dict, baseline: dict) -> list[str]:
+    """Names of configuration fields that differ between two reports.
+
+    A field absent from either side counts as differing, so baselines written
+    before an axis existed are rejected instead of silently matching.
+    """
+    return [key for key in CONFIG_KEYS
+            if report.get(key) != baseline.get(key)]
