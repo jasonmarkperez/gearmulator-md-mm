@@ -72,6 +72,17 @@ target_include_directories(synthLib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 if(BUILD_TESTING)
 	add_executable(synthLibMidiClockTimingTest synthLibTest/midiClockTimingTest.cpp)
 	target_link_libraries(synthLibMidiClockTimingTest PRIVATE synthLib)
+	# The test feeds deliberate NaN tempo/position to prove the clock refuses to
+	# emit a transport edge from unusable host data. midiClock.cpp keeps IEEE
+	# semantics above, but under the Release -Ofast (-ffinite-math-only) the
+	# compiler folds the NaN away in THIS translation unit before the call, so
+	# the guard receives 0.0, reads it as a genuine seek to position zero, and
+	# correctly relocates -- the test then fails on a bug that does not exist.
+	if(MSVC)
+		target_compile_options(synthLibMidiClockTimingTest PRIVATE /fp:precise)
+	else()
+		target_compile_options(synthLibMidiClockTimingTest PRIVATE -fno-fast-math)
+	endif()
 	add_test(NAME synthLibMidiClockTimingTest COMMAND synthLibMidiClockTimingTest)
 	set_tests_properties(synthLibMidiClockTimingTest PROPERTIES LABELS "UnitTest;Midi;Timing" TIMEOUT 30)
 
