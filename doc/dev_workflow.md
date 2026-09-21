@@ -65,6 +65,23 @@ tests that read them directly; plugin-level firmware tests construct a real
 (`Tools::getPublicDataFolder`) instead, so without a staged data root they
 fail with a missing-ROM error rather than running.
 
+One gate needs more than a ROM. `mdSysexLifecycleTest` takes four fixture
+**files** as argv — an MD ROM, an MD factory-cache dump, an MM ROM and an MM
+patch capture — which no environment variable can supply. It is therefore
+registered only when you configure the paths:
+
+```sh
+cmake -S . -B temp/cmake_dev \
+  "-DMD_SYSEX_LIFECYCLE_FIXTURES=/path/md.bin;/path/md-factory.cache;/path/mm.bin;/path/mm-patch.bin"
+```
+
+Configure rejects a list that is not exactly four paths, or that names a file
+that does not exist. Left unset, the test is not registered at all and its
+executable is still built, so it cannot rot. It used to be registered
+unconditionally, which under `--firmware` made it fail on every machine
+regardless of firmware — the reliable way to teach everyone to ignore a red
+test.
+
 ## Run the standalone app
 
 ```sh

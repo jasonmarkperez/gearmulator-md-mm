@@ -286,9 +286,38 @@ if(BUILD_TESTING)
 	endfunction()
 
 	add_md_automation_firmware_test(mdSysexLifecycleTest mdSysexLifecycleTest.cpp)
-	add_test(NAME mdSysexLifecycleTest COMMAND mdSysexLifecycleTest)
-	set_tests_properties(mdSysexLifecycleTest PROPERTIES
-		LABELS "Integration;FirmwareTest" SKIP_RETURN_CODE 77 TIMEOUT 600)
+	# This test needs four fixture FILES as argv -- an MD ROM, an MD factory
+	# cache dump, an MM ROM and an MM patch capture. Unlike every other gate
+	# here those cannot come from GEARMULATOR_*_FIRMWARE_BIN, so the test can
+	# never pass unless the paths are configured. Registering it unconditionally
+	# made it fail on every machine under MD_AUTOMATION_REQUIRE_FIRMWARE=1,
+	# which is how a permanently red test ends up being ignored. Configure
+	# MD_SYSEX_LIFECYCLE_FIXTURES with the four paths, in that order, to run it.
+	set(MD_SYSEX_LIFECYCLE_FIXTURES "" CACHE STRING
+		"Semicolon-separated <MD-ROM>;<MD-factory.cache>;<MM-ROM>;<MM-patch.bin> \
+enabling mdSysexLifecycleTest")
+	list(LENGTH MD_SYSEX_LIFECYCLE_FIXTURES _md_sysex_fixture_count)
+	if(_md_sysex_fixture_count EQUAL 4)
+		set(_md_sysex_fixtures_missing "")
+		foreach(_md_sysex_fixture IN LISTS MD_SYSEX_LIFECYCLE_FIXTURES)
+			if(NOT EXISTS "${_md_sysex_fixture}")
+				list(APPEND _md_sysex_fixtures_missing "${_md_sysex_fixture}")
+			endif()
+		endforeach()
+		if(_md_sysex_fixtures_missing)
+			message(FATAL_ERROR
+				"MD_SYSEX_LIFECYCLE_FIXTURES names files that do not exist: "
+				"${_md_sysex_fixtures_missing}")
+		endif()
+		add_test(NAME mdSysexLifecycleTest
+			COMMAND mdSysexLifecycleTest ${MD_SYSEX_LIFECYCLE_FIXTURES})
+		set_tests_properties(mdSysexLifecycleTest PROPERTIES
+			LABELS "Integration;FirmwareTest" SKIP_RETURN_CODE 77 TIMEOUT 600)
+	elseif(NOT _md_sysex_fixture_count EQUAL 0)
+		message(FATAL_ERROR
+			"MD_SYSEX_LIFECYCLE_FIXTURES needs exactly 4 paths, got "
+			"${_md_sysex_fixture_count}")
+	endif()
 
 	add_md_automation_firmware_test(mdAutomationFirmwareTest
 		mdAutomationFirmwareTest.cpp)
