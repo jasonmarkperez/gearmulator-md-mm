@@ -61,11 +61,18 @@ def wait_for_stable_epoch(client, log, *, since: float | None = None,
     it is gated on Hardware::isFactoryFlashReadyForReboot(), which depends on
     emulated CPU cycles and a flash-idle quiet period, not a fixed wall-clock
     delay, so its timing tracks emulation speed (build config, host load)
-    rather than landing at a predictable offset. Across repeated runs during
-    development only the early automatic bump was ever observed to actually
-    fire; the factory-flash commit's diagnostic log line never printed even
-    across a 90s dedicated trace. Do not delete this wait on the strength of
-    that: the point is not to wait out one named mechanism, it is that
+    rather than landing at a predictable offset. Across repeated `dev.py ui`
+    runs during development only the early automatic bump was ever observed
+    to actually fire; the factory-flash commit's diagnostic log line never
+    printed even across a 90s dedicated trace. That is consistent with, not
+    contradicting, `dev.py perf` observing that same log line on a cold data
+    root (see doc/dev_workflow.md's "MD ~150 ms lock waits" section): `perf`
+    renders continuous audio through latency_host, which is what advances
+    the emulated cycles the quiet period is gated on, while a `ui` scenario
+    only advances the device via sparse MCP calls with no continuous render
+    behind them, so it can leave that gate unreached no matter how long the
+    scenario runs. Do not delete this wait on the strength of that: the
+    point is not to wait out one named mechanism, it is that
     boot() returns on the first drawn frame, well before *anything* running
     on its own timeline is guaranteed to have settled, and this function
     defends against any such unattributed commit, known or not, by waiting

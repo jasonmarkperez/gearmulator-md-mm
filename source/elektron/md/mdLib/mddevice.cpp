@@ -251,23 +251,31 @@ namespace md
 
 	void Device::captureStateInputs(StateInputs& _inputs)
 	{
+		// The out parameter is a public API whose contract is "capture, release
+		// the lock, encode". Clearing it first means a caller that reuses one
+		// StateInputs across calls (to avoid reallocating ~17 MiB) never carries
+		// a stale field from a previous branch into operator==.
+		_inputs = {};
+
 		auto* stateHardware = m_hardware.get();
 		if(m_deferredPreparedState && m_deferredPreparedState->m_hardware)
 			stateHardware = m_deferredPreparedState->m_hardware.get();
 
 		_inputs.model = m_model;
 		_inputs.patchRam = stateHardware->copyPatchRam();
-		// Copied rather than referenced: the encode runs after the caller has
-		// released the device lock, by which time this Hardware may have been
-		// replaced. 8 MiB of memcpy is still three orders of magnitude cheaper
-		// than encoding under the lock.
-		_inputs.romBaseline = stateHardware->flashBaseline();
 
 		if(m_model == MachineModel::Monomachine)
 		{
 			_inputs.userFlash = stateHardware->copyUserFlash();
 			return;
 		}
+
+		// Copied rather than referenced: the encode runs after the caller has
+		// released the device lock, by which time this Hardware may have been
+		// replaced. 8 MiB of memcpy is still three orders of magnitude cheaper
+		// than encoding under the lock. Machinedrum-only: encodeStateInputs()
+		// never reads romBaseline on the Monomachine path.
+		_inputs.romBaseline = stateHardware->flashBaseline();
 
 		_inputs.hasFactoryBaseline =
 			stateHardware->copyFactoryFlashBaseline(_inputs.factoryBaseline);

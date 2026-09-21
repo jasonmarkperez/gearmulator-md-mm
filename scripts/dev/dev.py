@@ -159,15 +159,20 @@ def latency_host(config: str) -> pathlib.Path:
 # ----------------------------------------------------------------- hermetic dev root
 
 def stage_devroot(key: str, rom: pathlib.Path, *, enable_mcp: bool,
-                  fresh: bool = False) -> dict[str, str]:
+                  fresh: bool = False, root_key: str | None = None) -> dict[str, str]:
     """Create an isolated HOME + data root for one product and return its env.
 
     Isolation is what makes repeated runs comparable: firmware, config, NVRAM
     and logs all live under temp/devroot instead of the developer's Documents
     folder, so a run can be wiped without losing real user state.
+
+    `root_key` names the subdirectory under temp/devroot, defaulting to
+    `key`. `perf` passes its own (see cmd_perf) so that `run`/`ui` -- which
+    mutate or wipe their shared `temp/devroot/<key>` -- cannot invalidate the
+    warm NVRAM/factory-flash cache a performance comparison depends on.
     """
     cfg = PRODUCTS[key]
-    case = DEVROOT / key
+    case = DEVROOT / (root_key or key)
     if fresh and case.exists():
         shutil.rmtree(case)
 
@@ -332,8 +337,19 @@ def cmd_run(args) -> int:
 
     try:
         client = McpClient.wait_for(pid=proc.pid, timeout=args.timeout)
-    except McpError as e:
+    except Exception as e:
+        # wait_for's own loop only swallows McpError/OSError; a stale
+        # discovery-file entry can still raise ValueError/KeyError out of
+        # int(inst["port"]) or json.loads (see mcpclient.find_instance and
+        # McpClient.health). Catching broadly here, the same way cmd_ui's
+        # try/except/finally does, is what keeps any such failure from
+        # leaving this process running with no pid reported.
         proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
         fail(str(e))
 
     print(f"mcp ready on port {client.port} (pid {proc.pid})")
@@ -418,14 +434,7 @@ def cmd_ui(args) -> int:
         print(f"ERROR {args.scenario}: {e}", file=sys.stderr)
         return 2
     finally:
-        # No MCP tool actually terminates the host process in this build --
-        # there is no "exit" entry in tools/list -- so the call below always
-        # fails and falls through to a plain terminate() signal instead. It
-        # is still attempted first in case a future build adds one.
-        try:
-            McpClient.connect(pid=proc.pid).call("exit")
-        except Exception:
-            proc.terminate()
+        proc.terminate()
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -456,16 +465,26 @@ def cmd_perf(args) -> int:
              f"dev.py build --config Release --target latency_host "
              f"{'mdJucePlugin_VST3' if key == 'md' else 'mmJucePlugin_VST3'}")
 
+    if args.repeats < 1:
+        fail("--repeats must be at least 1")
+    if args.check and args.repeats < 2:
+        fail("--check needs at least 2 repeats; a single run has no measurable spread")
+
     problem = perfrun.validate_run(args.scenario, args.rate, args.block, args.seconds)
     if problem:
         fail(problem)
 
-    out_dir = DEVROOT / key / "perf" / args.mode
+    # perf gets its own data root, isolated from the one `run`/`ui` share:
+    # `ui` wipes its root on every launch (fresh=True) and `run` mutates it,
+    # either of which would invalidate the warm NVRAM/factory-flash cache a
+    # baseline comparison depends on (see stage_devroot's docstring).
+    perf_root_key = f"{key}-perf"
+    out_dir = DEVROOT / perf_root_key / "perf" / args.mode
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
 
-    env = stage_devroot(key, roms[key], enable_mcp=False)
+    env = stage_devroot(key, roms[key], enable_mcp=False, root_key=perf_root_key)
 
     samples = []
     for rep in range(args.repeats):
@@ -559,13 +578,16 @@ def cmd_perf(args) -> int:
         mismatch = perfrun.config_mismatch(report, baseline)
         if mismatch:
             fail(f"baseline {baseline_file.name} was recorded with a different "
-                 f"{', '.join(mismatch)}; re-record it with --save-baseline")
+                 f"{', '.join(mismatch)}; delete {baseline_file} and re-record "
+                 f"it with --save-baseline")
         if report["spread"] > args.max_spread:
             fail(f"repeats spread {report['spread']:.1%}, above the "
                  f"{args.max_spread:.0%} limit: this run cannot resolve a "
                  f"{args.tolerance:.0%} tolerance. Re-run on an idle machine.")
         passed, message = perfrun.compare(report, baseline, args.tolerance)
         print(message)
+        if passed is None:
+            return 1
         if not passed:
             print(f"REGRESSION: exceeds {args.tolerance:.0%} tolerance")
             return 1
@@ -644,10 +666,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--scenario", default="notes", choices=perfrun.SCENARIOS,
                     help="workload: notes, chords, input (opens 2 input "
                          "channels), or transport")
-    # latency_host rejects runs shorter than 20s; it needs a warm-up window
-    # before its measurement period is meaningful.
+    # latency_host requires 20 <= seconds <= 600: the floor gives its warm-up
+    # window room to matter before the measurement period starts, the
+    # ceiling caps how long a single run can be left rendering.
     sp.add_argument("--seconds", type=int, default=20,
-                    help="render duration, minimum 20")
+                    help="render duration in seconds, between 20 and 600")
     sp.add_argument("--repeats", type=int, default=3)
     # 8s comfortably covers the JIT warm-up on an M3 Max; raise it on slower
     # hardware if startupOverruns keeps leaking into the steady-state window.

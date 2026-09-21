@@ -145,17 +145,19 @@ HEADLINE_MEDIAN_KEY = {"throughput": "xRenderOnlyMedian", "paced": "loadP50Media
 LOWER_IS_BETTER = {"throughput": False, "paced": True}
 
 
-def compare(report: dict, baseline: dict, tolerance: float) -> tuple[bool, str]:
+def compare(report: dict, baseline: dict, tolerance: float) -> tuple[bool | None, str]:
     """Compare one report against a baseline on that mode's headline figure.
 
     Only moves in the worse direction fail: getting faster is never a
-    regression. Returns (passed, human readable message).
+    regression. Returns (passed, human readable message); passed is None
+    when the headline figure is missing or zero on either side -- no
+    comparison was made, which the caller must not report as a regression.
     """
     mode = report["mode"]
     key = HEADLINE_MEDIAN_KEY[mode]
     new, old = report.get(key), baseline.get(key)
     if new is None or old is None or old == 0:
-        return False, f"cannot compare: {key} missing or zero in report or baseline"
+        return None, f"cannot compare: {key} missing or zero in report or baseline"
 
     delta = (new - old) / old
     worse = delta > tolerance if LOWER_IS_BETTER[mode] else delta < -tolerance
@@ -168,7 +170,8 @@ SCENARIOS = ("notes", "chords", "input", "transport")
 # measurement period means anything.
 MIN_SECONDS = 20
 
-# latency_host.cpp:70 rejects anything longer outright.
+# latency_host.cpp:69-71 rejects anything longer outright (one predicate
+# spanning those lines; the `seconds > 600` clause itself is on :69).
 MAX_SECONDS = 600
 
 

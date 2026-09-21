@@ -444,6 +444,12 @@ namespace mdJucePlugin
 
 	AudioPluginAudioProcessor::~AudioPluginAudioProcessor()
 	{
+		// The MCP server thread can dispatch tools that capture this derived
+		// type (e.g. get_front_panel via registerPanelTools). Stop it before any
+		// derived subobject teardown; stopMcpServer() is private, so this reaches
+		// it through the same public entry point the settings UI uses. The base
+		// destructor's own stopMcpServer() call becomes a no-op afterward.
+		setMcpServerEnabled(false);
 		stopTimer();
 		m_performanceReport.reset();
 		destroyEditorState();
@@ -625,8 +631,13 @@ namespace mdJucePlugin
 			[&](synthLib::Device* const _device)
 			{
 				auto* const device = dynamic_cast<md::Device*>(_device);
+				// A project-state restore that began after the lock was dropped
+				// leaves Hardware untouched, so the raw-input comparison below
+				// would match a captured-before-the-restore snapshot. Refuse the
+				// commit here too, the same way the pre-capture check above does.
 				if(device != liveDevice || !device
-					|| device->hardwareEpoch() != liveEpoch)
+					|| device->hardwareEpoch() != liveEpoch
+					|| device->isProjectStateRestorePending())
 					return false;
 				// Detect modification while the lock was dropped by comparing
 				// the raw inputs, not a re-encoded blob: same guarantee, ~0.3ms

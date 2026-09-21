@@ -132,7 +132,11 @@ python3 scripts/dev/dev.py perf md --mode throughput --scenario chords
 ```
 
 Both modes drive `latency_host` (`source/pluginTester/latency/`) against the
-Release VST3 in an isolated data root. `--seconds` must be between 20 and 600
+Release VST3 in a data root reserved for `perf` alone
+(`temp/devroot/<product>-perf`), separate from the one `run` and `ui` use.
+That isolation matters: `ui` wipes its root on every launch and `run` mutates
+it, either of which would silently turn a warm baseline comparison cold (see
+"Fixed: MD ~150 ms lock waits" below). `--seconds` must be between 20 and 600
 (default 20); `latency_host` enforces both bounds — the floor so its warm-up
 window does not dominate, the ceiling so a run cannot be left rendering
 indefinitely.
@@ -212,11 +216,19 @@ encode, so there is still one encoding path. The commit guard compares two
 captures instead of two encoded blobs — same guarantee, ~0.3 ms instead of
 ~150 ms held against the audio thread.
 
-Result: MD `loadMax` fell from 57.7 to 1.70–1.80, and the run still logs
-`[MD] factory flash preparation complete; rebooted in process`, so the work
-still happens. A state-generation counter was considered and rejected: patch
-RAM is written from the CPU store path, so tracking it would tax the hot
-emulation loop to solve a problem that costs nothing to solve this way.
+Result: MD `loadMax` fell from 57.7 to 1.70–1.80, and `dev.py perf` still logs
+`[MD] factory flash preparation complete; rebooted in process` on a cold
+data root, so the work still happens. That observation is specific to
+`perf`: it renders continuous audio, which is what advances the emulated
+cycles the factory-flash quiet period is gated on. A `dev.py ui` scenario
+drives the same device over MCP calls with no continuous render, so it can
+leave that quiet period unreached and the line unprinted even across a much
+longer wall-clock trace -- see `wait_for_stable_epoch()`'s docstring in
+`scenarios.py`, which documents exactly that. Neither claim is stale; they
+describe two different data roots and workloads. A state-generation counter
+was considered and rejected: patch RAM is written from the CPU store path,
+so tracking it would tax the hot emulation loop to solve a problem that
+costs nothing to solve this way.
 
 ## Promoting a scenario into a gate
 

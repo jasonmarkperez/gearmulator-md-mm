@@ -20,12 +20,11 @@ class McpError(RuntimeError):
     pass
 
 
-def read_instances(discovery_file: pathlib.Path | None = None) -> list[dict]:
-    path = discovery_file or DISCOVERY_FILE
-    if not path.is_file():
+def read_instances() -> list[dict]:
+    if not DISCOVERY_FILE.is_file():
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(DISCOVERY_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return []
     return data if isinstance(data, list) else []
@@ -43,15 +42,14 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def find_instance(name_substring: str = "", pid: int | None = None,
-                  discovery_file: pathlib.Path | None = None) -> dict:
+def find_instance(name_substring: str = "", pid: int | None = None) -> dict:
     """Resolve one live instance from the discovery file.
 
     Stale entries are common after a crash, so liveness is checked by pid
     rather than trusted from the file.
     """
     candidates = []
-    for inst in read_instances(discovery_file):
+    for inst in read_instances():
         if pid is not None and inst.get("pid") != pid:
             continue
         if name_substring and name_substring.lower() not in str(inst.get("pluginName", "")).lower():
@@ -63,7 +61,7 @@ def find_instance(name_substring: str = "", pid: int | None = None,
     if not candidates:
         raise McpError(
             f"no live MCP instance matching name={name_substring!r} pid={pid} "
-            f"in {discovery_file or DISCOVERY_FILE}")
+            f"in {DISCOVERY_FILE}")
     if len(candidates) > 1:
         ports = [c.get("port") for c in candidates]
         raise McpError(f"ambiguous MCP instance match, ports={ports}; pass a pid")
@@ -79,19 +77,18 @@ class McpClient:
 
     @classmethod
     def connect(cls, name_substring: str = "", pid: int | None = None,
-                discovery_file: pathlib.Path | None = None, **kwargs) -> "McpClient":
-        inst = find_instance(name_substring, pid, discovery_file)
+                **kwargs) -> "McpClient":
+        inst = find_instance(name_substring, pid)
         return cls(int(inst["port"]), **kwargs)
 
     @classmethod
     def wait_for(cls, name_substring: str = "", pid: int | None = None,
-                 timeout: float = 60.0, discovery_file: pathlib.Path | None = None,
-                 **kwargs) -> "McpClient":
+                 timeout: float = 60.0, **kwargs) -> "McpClient":
         deadline = time.monotonic() + timeout
         last: Exception | None = None
         while time.monotonic() < deadline:
             try:
-                client = cls.connect(name_substring, pid, discovery_file, **kwargs)
+                client = cls.connect(name_substring, pid, **kwargs)
                 client.health()
                 return client
             except (McpError, OSError, urllib.error.URLError) as e:

@@ -34,18 +34,30 @@ differences below are well outside run-to-run noise. Reproduce with
 | --- | --- | --- | --- |
 | MD throughput (xRealtime) | 1.600 | 1.701 (+6.3%) | 1.742 (+8.9%) |
 | MM throughput (xRealtime) | 1.527 | 1.637 (+7.2%) | 1.639 (+7.3%) |
-| MD paced load p50 | 0.633 | 0.604 | 0.566 (-10.5%) |
-| MD paced load p99 | 1.046 | 1.016 | 1.010 |
+| MD paced load p50 (all-blocks)\* | 0.633 | 0.604 | 0.566 (-10.5%) |
+| MD paced load p99 (all-blocks)\* | 1.046 | 1.016 | 1.010 |
 
 Extending the optimization to the DSP libraries is worth a further 2.4
 percentage points of MD throughput but essentially nothing on MM (+0.1). The
 cause has not been investigated; it is not safe to assume it generalizes to
 other workloads or hosts.
 
-Overrun counts are not usable as a discriminator here: within a single variant
-three repeats produced 55, 86 and 108 overruns per 7500 callbacks, because the
-count is dominated by the JIT warm-up transient at the start of each run. Use
-p50 and p99.
+\* These two rows landed in 04bd48e2, before a0f87f3d changed `loadP50`/
+`loadP99` from a median over every callback to a median over the steady
+window only (see "Warm-up window" in `doc/dev_workflow.md`). They are
+all-blocks figures, not what `scripts/dev/dev.py perf` reports today: the
+notes scenario fires at 10.0/13.1/16.3s, all past the current 8s warm-up
+boundary, so folding the voice-less warm-up window back in pulls the
+all-blocks median down relative to the steady-window one. The committed
+ThinLTO+DSP baseline recorded under the same flags is 0.634 (steady-window),
+not 0.566. The throughput rows above are unaffected -- `xRealtime` was never
+part of that split. Re-measuring these two rows with the current tool is the
+correct fix; until then, do not compare them against a fresh `perf` run.
+
+The 55/86/108-overruns observation that used to sit here was the same
+pre-split, all-blocks measurement; it has been superseded by "Warm-up
+window" in `doc/dev_workflow.md`, which reports it against the
+post-split startup/steady figures instead of duplicating it here.
 
 `build_mdmm.sh` defaults to `arm64;x86_64` and `pgo_mode=none`, producing
 `Gearmulator-Elektron-macOS-Universal.zip`. Those defaults are also explicit in

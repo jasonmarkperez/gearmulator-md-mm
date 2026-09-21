@@ -46,6 +46,20 @@ class ReadBlocksTest(BlocksFixture):
         with self.assertRaises(FileNotFoundError):
             perfrun.read_blocks(self.root / "absent.blocks.csv")
 
+    def test_a_row_with_no_render_ms_is_skipped_not_crashed_on(self) -> None:
+        # latency_host can flush a trailing/partial row with empty fields;
+        # read_blocks must drop it before touching int()/float() on the rest
+        # of that row, not just on render_ms.
+        path = self.root / "partial.blocks.csv"
+        with path.open("w", newline="", encoding="utf-8") as stream:
+            writer = csv.writer(stream)
+            writer.writerow(
+                ["sample", "count", "late_ms", "render_ms", "reported_latency_samples"])
+            writer.writerow([0, 100, 0.25, "1.0", 32])
+            writer.writerow(["", "", "", "", ""])
+        blocks = perfrun.read_blocks(path)
+        self.assertEqual([b.sample for b in blocks], [0])
+
 
 class SummarizeTest(BlocksFixture):
     # rate 1000 / 100 frames gives a 0.1s budget per callback, so loads are
@@ -102,6 +116,22 @@ class SummarizeTest(BlocksFixture):
         summary = self.summary([50.0], warmup=99.0)
         self.assertNotIn("xRenderOnly", summary)
 
+    def test_load_p99_excludes_a_single_outlier_among_101_samples(self) -> None:
+        # 101 steady-window samples: 100 identical loads then one large
+        # outlier. min(len-1, int(len*0.99)) is min(100, 99) = 99, which
+        # lands on the last of the 100 identical values, not on the
+        # outlier at index 100 -- unlike loadMax, which the outlier reaches.
+        summary = self.summary([50.0] * 100 + [5000.0], warmup=0.0)
+        self.assertAlmostEqual(summary["loadP99"], 0.5)
+        self.assertAlmostEqual(summary["loadMax"], 50.0)
+
+    def test_load_p99_degenerates_to_load_max_for_a_small_capture(self) -> None:
+        # For counts this small min(len-1, int(len*0.99)) clamps to the
+        # last element, same index as loadMax: there is no meaningful 99th
+        # percentile of three points.
+        summary = self.summary([10.0, 20.0, 30.0], warmup=0.0)
+        self.assertAlmostEqual(summary["loadP99"], summary["loadMax"])
+
 
 class BaselineIdentityTest(unittest.TestCase):
     def test_baseline_name_distinguishes_every_workload_axis(self) -> None:
@@ -151,9 +181,6 @@ class BaselineIdentityTest(unittest.TestCase):
         self.assertEqual(
             perfrun.config_mismatch(self.config(), self.config(seconds=60)),
             ["seconds"])
-
-    def test_config_keys_includes_seconds(self) -> None:
-        self.assertIn("seconds", perfrun.CONFIG_KEYS)
 
 
 class SpreadTest(unittest.TestCase):
@@ -218,7 +245,9 @@ class CompareTest(unittest.TestCase):
 
     def test_a_missing_headline_is_reported_rather_than_crashing(self) -> None:
         ok, message = perfrun.compare({"mode": "paced"}, self.report("paced", 0.6), 0.05)
-        self.assertFalse(ok)
+        # None, not False: a caller printing "REGRESSION" on an ok of False
+        # would assert a comparison that never happened.
+        self.assertIsNone(ok)
         self.assertIn("loadP50Median", message)
 
 
