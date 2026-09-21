@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import csv
+import json
 import pathlib
 import tempfile
 import unittest
 
+import dev
 import perfrun
 
 
@@ -371,6 +373,24 @@ class ValidateRunTest(unittest.TestCase):
     def test_runs_above_the_ceiling_are_rejected(self) -> None:
         self.assertIsNotNone(perfrun.validate_run("notes", 48000, 128, 700))
         self.assertIsNone(perfrun.validate_run("notes", 48000, 128, 600))
+
+
+class NoiseBoundInvariantTest(unittest.TestCase):
+    def test_max_spread_default_keeps_the_noise_bound_within_tolerance(self) -> None:
+        # dev.py's --max-spread default exists specifically so that, even at
+        # the worst case -- a report spread right at the limit, combined
+        # with the widest spread among today's committed baselines --
+        # `compare`'s noise bound cannot silently exceed the --tolerance
+        # default (see doc/dev_workflow.md). Pin both halves here, read
+        # from where they actually live, so a future change to either
+        # default, or to the widest committed baseline, cannot silently
+        # break that invariant.
+        args = dev.build_parser().parse_args(["perf", "md"])
+        widest_baseline_spread = max(
+            json.loads(path.read_text(encoding="utf-8"))["spread"]
+            for path in dev.BASELINES.glob("*.json"))
+        noise = 0.5 * (args.max_spread + widest_baseline_spread)
+        self.assertLessEqual(noise, args.tolerance)
 
 
 

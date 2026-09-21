@@ -559,6 +559,10 @@ def cmd_perf(args) -> int:
     baseline_file = BASELINES / perfrun.baseline_name(
         key, args.mode, report["scenario"], args.rate, args.block)
     if args.save_baseline:
+        if report["spread"] > args.max_spread:
+            fail(f"repeats spread {report['spread']:.1%}, above the "
+                 f"{args.max_spread:.0%} limit: this run is too noisy to "
+                 f"become a baseline. Re-run on an idle machine.")
         BASELINES.mkdir(parents=True, exist_ok=True)
         if baseline_file.is_file():
             existing = json.loads(baseline_file.read_text(encoding="utf-8"))
@@ -681,13 +685,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--save-baseline", action="store_true")
     sp.add_argument("--check", action="store_true", help="compare against the baseline")
     sp.add_argument("--tolerance", type=float, default=0.05)
-    sp.add_argument("--max-spread", type=float, default=0.08,
-                    help="refuse to compare when repeats disagree this much; "
-                         "0.08 keeps compare's noise bound from silently "
-                         "widening past --tolerance against real committed-"
-                         "baseline spreads (up to ~2%%), while still admitting "
-                         "the observed 3-4%% paced captures that motivated "
-                         "raising this from the original 3%%")
+    sp.add_argument("--max-spread", type=float, default=0.075,
+                    help="refuse to compare or save a baseline when repeats "
+                         "disagree this much; 0.075 caps the report's own "
+                         "contribution to compare's noise bound at "
+                         "0.5*7.5%%=3.75%%, which combined with the widest "
+                         "committed baseline spread (~2.04%%) keeps that "
+                         "bound at ~4.8%%, at or below the default 5%% "
+                         "--tolerance, while still admitting the observed "
+                         "4.3%%/3.4%% paced captures that motivated raising "
+                         "this from the original 3%%")
     sp.set_defaults(func=cmd_perf)
 
     return p
