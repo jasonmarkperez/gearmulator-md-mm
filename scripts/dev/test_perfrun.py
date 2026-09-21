@@ -277,6 +277,18 @@ class CompareTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("noise", message)
 
+    def test_a_move_past_the_noise_band_still_fails_when_noise_governs(self) -> None:
+        # Same 20% combined noise as above, but +22%: outside the widened
+        # threshold, so the gate must still fail. Nothing else in the suite
+        # bounds the noise term from above -- doubling it, stacking it on
+        # the tolerance, or never failing at all once noise governs would
+        # otherwise all pass.
+        ok, message = perfrun.compare(
+            self.spread_report("paced", 0.732, 0.20),
+            self.spread_report("paced", 0.600, 0.20), 0.05)
+        self.assertFalse(ok)
+        self.assertIn("noise", message)
+
     def test_quiet_runs_fall_back_to_the_user_tolerance(self) -> None:
         # Combined noise 1% is below the 5% tolerance, so tolerance governs.
         ok, message = perfrun.compare(

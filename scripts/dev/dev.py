@@ -590,9 +590,9 @@ def cmd_perf(args) -> int:
         if passed is None:
             return 1
         if not passed:
-            print(f"REGRESSION: exceeds {args.tolerance:.0%} tolerance")
+            print("REGRESSION: worse than the threshold above")
             return 1
-        print("within tolerance")
+        print("within threshold")
         return 0
 
     return 0
@@ -681,10 +681,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--save-baseline", action="store_true")
     sp.add_argument("--check", action="store_true", help="compare against the baseline")
     sp.add_argument("--tolerance", type=float, default=0.05)
-    sp.add_argument("--max-spread", type=float, default=0.15,
+    sp.add_argument("--max-spread", type=float, default=0.08,
                     help="refuse to compare when repeats disagree this much; "
-                         "compare's own threshold already absorbs ordinary "
-                         "noise, so this only catches a pathological run")
+                         "0.08 keeps compare's noise bound from silently "
+                         "widening past --tolerance against real committed-"
+                         "baseline spreads (up to ~2%%), while still admitting "
+                         "the observed 3-4%% paced captures that motivated "
+                         "raising this from the original 3%%")
     sp.set_defaults(func=cmd_perf)
 
     return p

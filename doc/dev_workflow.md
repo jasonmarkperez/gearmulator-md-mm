@@ -170,13 +170,19 @@ block, and the file records the host it was taken on. A `--check` or
 is refused outright rather than silently compared or overwritten — delete the
 stale baseline file first if replacing it is intended. Baselines are
 machine-specific, so `--check` is a local gate, not a CI one, and only
-slowdowns fail it. `--max-spread` (default 15%) separately refuses the
+slowdowns fail it. `--max-spread` (default 8%) separately refuses the
 comparison when the repeats themselves disagree by more than that fraction.
 `compare`'s own threshold (below) already widens itself to absorb ordinary
-run-to-run noise, so `--max-spread` no longer exists to protect
-`--tolerance` — its only remaining job is refusing a run whose repeats are
-so inconsistent that no comparison built on their median would mean
-anything, i.e. a pathological run, not merely a noisy one. Expect a few
+run-to-run noise, so `--max-spread` is not there to protect `--tolerance`
+from noise directly — but the noise bound it feeds, `0.5 * (report_spread +
+baseline_spread)`, is otherwise unbounded above, and a report spread wide
+enough would let a genuine regression hide inside a silently-widened
+threshold. 8% caps the report's own contribution at `0.5 * 8% = 4%`, which
+combined with the ~2% spread seen on real committed baselines keeps the
+noise bound from exceeding the default 5% `--tolerance`; it still admits
+the 4.3% and 3.4% paced captures that motivated raising this limit off its
+original, too-tight 3%. Repeats disagreeing by more than that are refused
+outright as a pathological run rather than compared at all. Expect a few
 percent of run-to-run noise; compare on an otherwise idle machine.
 
 `--check`'s threshold is not `--tolerance` alone: it is the larger of
