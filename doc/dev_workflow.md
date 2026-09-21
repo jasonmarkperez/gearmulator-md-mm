@@ -98,6 +98,19 @@ MCP is enabled in the staged config, so the app registers itself in
 `~/.gearmulator_mcp.json` and `run` waits until the server answers before
 returning. `--no-mcp` opts out.
 
+`run` and `ui` build the standalone target before launching, rather than just
+checking that a bundle exists. An app that exists but predates your edit is
+worse than one that is missing: it launches, the scenario passes, and the
+result describes code you did not change. That happened once here — a fix wave
+was "verified" by `ui` runs against a stale Debug build. Ninja is about a
+second when everything is current.
+
+The staged config also pre-sets `disclaimerSeen`. The editor otherwise shows a
+modal legal notice gated on "I Agree" (`jucePluginEditorLib/pluginEditor.cpp:408`),
+and because every dev root is fresh it re-arms on each launch. This affects only
+these throwaway roots — the shipped product is untouched and real users still
+see the notice on first run.
+
 ## Drive it
 
 ```sh

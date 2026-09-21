@@ -196,11 +196,18 @@ def stage_devroot(key: str, rom: pathlib.Path, *, enable_mcp: bool,
         except OSError:
             shutil.copyfile(rom, staged)
 
+    # disclaimerSeen: the editor shows a modal legal notice gated on "I Agree"
+    # (jucePluginEditorLib/pluginEditor.cpp:408-443) and blocks startup until
+    # it is dismissed. Every dev root is fresh, so it re-arms on every launch
+    # and no automated scenario can get past it. Pre-agreeing it here affects
+    # only these throwaway roots; the shipped product is untouched and real
+    # users still see the notice.
     config_file = config_dir / f"{cfg['product']}.xml"
     config_file.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<PROPERTIES>\n"
         f'  <VALUE name="enableMcpServer" val="{1 if enable_mcp else 0}"/>\n'
+        '  <VALUE name="disclaimerSeen" val="1"/>\n'
         "</PROPERTIES>\n",
         encoding="utf-8")
 
@@ -325,16 +332,35 @@ def cmd_test(args) -> int:
     return result.returncode
 
 
+def standalone_target(key: str) -> str:
+    return "mdJucePlugin_Standalone" if key == "md" else "mmJucePlugin_Standalone"
+
+
+def build_standalone(key: str, config: str, jobs: int) -> pathlib.Path:
+    """Build the standalone app, then return its bundle path.
+
+    Always build, never just check for existence. An app that exists but
+    predates the source is worse than one that is missing: it launches, the
+    scenario passes, and the result describes code that is not the code you
+    changed. That happened -- a fix wave was "verified" by ui runs against a
+    stale Debug build. Ninja is about a second when everything is current.
+    """
+    run(["cmake", "--build", BUILD, "--config", config,
+         "--target", standalone_target(key), "-j", str(jobs)])
+
+    app = standalone_app(key, config)
+    if not app.exists():
+        fail(f"{app} still missing after building {standalone_target(key)}")
+    return app
+
+
 def cmd_run(args) -> int:
     key = args.product
     roms = find_roms()
     if key not in roms:
         fail(f"no valid {PRODUCTS[key]['model']} ROM in {ROMS}")
 
-    app = standalone_app(key, config_type(args))
-    if not app.exists():
-        fail(f"{app} not built; run: dev.py build --config {config_type(args)} "
-             f"--target {'mdJucePlugin_Standalone' if key == 'md' else 'mmJucePlugin_Standalone'}")
+    app = build_standalone(key, config_type(args), args.jobs)
 
     env = stage_devroot(key, roms[key], enable_mcp=not args.no_mcp, fresh=args.fresh)
     binary = app / "Contents" / "MacOS" / PRODUCTS[key]["product"]
@@ -425,9 +451,7 @@ def cmd_ui(args) -> int:
     if key not in roms:
         fail(f"no valid {PRODUCTS[key]['model']} ROM in {ROMS}")
 
-    app = standalone_app(key, config_type(args))
-    if not app.exists():
-        fail(f"{app} not built")
+    app = build_standalone(key, config_type(args), args.jobs)
 
     env = stage_devroot(key, roms[key], enable_mcp=True, fresh=True)
     binary = app / "Contents" / "MacOS" / PRODUCTS[key]["product"]
