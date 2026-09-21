@@ -250,6 +250,47 @@ class CompareTest(unittest.TestCase):
         self.assertIsNone(ok)
         self.assertIn("loadP50Median", message)
 
+    def spread_report(self, mode: str, value: float, spread: float) -> dict:
+        report = self.report(mode, value)
+        report["spread"] = spread
+        return report
+
+    def test_a_change_inside_the_combined_noise_is_not_a_regression(self) -> None:
+        # 8% worse, but each run's repeats ranged 10%, so the two medians are
+        # each worth about +/-5% and the move is not resolvable.
+        ok, message = perfrun.compare(
+            self.spread_report("paced", 0.648, 0.10),
+            self.spread_report("paced", 0.600, 0.10), 0.05)
+        self.assertTrue(ok)
+        self.assertIn("noise", message)
+
+    def test_a_change_beyond_the_combined_noise_is_still_a_regression(self) -> None:
+        ok, _ = perfrun.compare(
+            self.spread_report("paced", 0.720, 0.02),
+            self.spread_report("paced", 0.600, 0.02), 0.05)
+        self.assertFalse(ok)
+
+    def test_quiet_runs_fall_back_to_the_user_tolerance(self) -> None:
+        # Combined noise 1% is below the 5% tolerance, so tolerance governs.
+        ok, message = perfrun.compare(
+            self.spread_report("paced", 0.642, 0.01),
+            self.spread_report("paced", 0.600, 0.01), 0.05)
+        self.assertFalse(ok)
+        self.assertIn("5.0%", message)
+
+    def test_a_baseline_without_a_spread_uses_the_tolerance_alone(self) -> None:
+        legacy = self.report("paced", 0.600)
+        self.assertNotIn("spread", legacy)
+        ok, _ = perfrun.compare(
+            self.spread_report("paced", 0.642, 0.0), legacy, 0.05)
+        self.assertFalse(ok)
+
+    def test_an_improvement_beyond_the_noise_is_never_a_regression(self) -> None:
+        ok, _ = perfrun.compare(
+            self.spread_report("paced", 0.400, 0.02),
+            self.spread_report("paced", 0.600, 0.02), 0.05)
+        self.assertTrue(ok)
+
 
 class HostCommandTest(unittest.TestCase):
     def command(self, **overrides) -> list[str]:

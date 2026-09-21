@@ -175,6 +175,29 @@ comparison when the repeats themselves vary by more than that fraction, since
 a spread that wide cannot resolve `--tolerance`. Expect a few percent of
 run-to-run noise; compare on an otherwise idle machine.
 
+`--check`'s threshold is not `--tolerance` alone: it is the larger of
+`--tolerance` and the combined observed noise of the two runs being
+compared, `0.5 * (report_spread + baseline_spread)`, where each report's
+`spread` is the range of its repeats' headline value divided by their
+median. A median's uncertainty is roughly half that range, so two medians
+are jointly worth about that much noise, and a move smaller than it is not
+resolvable — calling it a regression would just be reacting to noise. The
+printed comparison line always names which bound applied (`tolerance` or
+`noise`) so a passing run that was only noise-limited is visible rather than
+silently lenient. Baselines saved before this existed have no `spread` key;
+those compare against `--tolerance` alone, since a missing spread is treated
+as 0.
+
+This matters most for **paced**: measured `loadP50` spread across separate
+`latency_host` invocations has ranged from 0.4% to 4.9% session to session,
+and a controlled A/B holding every variable fixed still produced a 1.4%
+"change" from no change at all. A fixed 5% paced tolerance sits inside that
+noise floor — it can both fire on noise and mask a real sub-5% regression.
+Throughput does not have this problem; its spread is consistently around
+0.5%. Use more repeats for paced `--check` runs than you would for
+throughput, so `spread` — and therefore the noise bound — reflects the
+distribution rather than a lucky pair of samples.
+
 ### Warm-up window
 
 `--warmup` (default 8s) splits each run. Boot and DSP JIT make the opening
