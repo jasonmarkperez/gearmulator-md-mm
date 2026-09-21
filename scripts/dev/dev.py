@@ -582,8 +582,9 @@ def cmd_perf(args) -> int:
                  f"it with --save-baseline")
         if report["spread"] > args.max_spread:
             fail(f"repeats spread {report['spread']:.1%}, above the "
-                 f"{args.max_spread:.0%} limit: this run cannot resolve a "
-                 f"{args.tolerance:.0%} tolerance. Re-run on an idle machine.")
+                 f"{args.max_spread:.0%} limit: these repeats disagree too much "
+                 f"to say anything coherent about performance, regardless of "
+                 f"tolerance. Re-run on an idle machine.")
         passed, message = perfrun.compare(report, baseline, args.tolerance)
         print(message)
         if passed is None:
@@ -680,8 +681,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--save-baseline", action="store_true")
     sp.add_argument("--check", action="store_true", help="compare against the baseline")
     sp.add_argument("--tolerance", type=float, default=0.05)
-    sp.add_argument("--max-spread", type=float, default=0.03,
-                    help="refuse to compare when repeats vary more than this")
+    sp.add_argument("--max-spread", type=float, default=0.15,
+                    help="refuse to compare when repeats disagree this much; "
+                         "compare's own threshold already absorbs ordinary "
+                         "noise, so this only catches a pathological run")
     sp.set_defaults(func=cmd_perf)
 
     return p

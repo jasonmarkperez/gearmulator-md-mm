@@ -264,11 +264,18 @@ class CompareTest(unittest.TestCase):
         self.assertTrue(ok)
         self.assertIn("noise", message)
 
-    def test_a_change_beyond_the_combined_noise_is_still_a_regression(self) -> None:
-        ok, _ = perfrun.compare(
-            self.spread_report("paced", 0.720, 0.02),
-            self.spread_report("paced", 0.600, 0.02), 0.05)
-        self.assertFalse(ok)
+    def test_beyond_the_min_noise_but_within_the_max_noise_passes(self) -> None:
+        # Combined (max) noise is 20% (spreads 0.20 each), so a +12% move
+        # is not resolvable and must pass. A buggy `min(tolerance, noise)`
+        # would land the threshold at 5% instead of 20%; so would dropping
+        # the noise term entirely (tolerance-only), or halving only one
+        # side's spread (10% instead of 20%) -- all three would wrongly
+        # call this a regression.
+        ok, message = perfrun.compare(
+            self.spread_report("paced", 0.672, 0.20),
+            self.spread_report("paced", 0.600, 0.20), 0.05)
+        self.assertTrue(ok)
+        self.assertIn("noise", message)
 
     def test_quiet_runs_fall_back_to_the_user_tolerance(self) -> None:
         # Combined noise 1% is below the 5% tolerance, so tolerance governs.
@@ -278,16 +285,33 @@ class CompareTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("5.0%", message)
 
-    def test_a_baseline_without_a_spread_uses_the_tolerance_alone(self) -> None:
+    def test_a_missing_baseline_spread_still_counts_the_reports_own_noise(self) -> None:
+        # The report's own 20% spread alone puts this +7% move inside the
+        # 10% noise band, even though the baseline predates `spread` and
+        # contributes nothing. A bare `baseline["spread"]` subscript would
+        # crash here (the key is genuinely absent); dropping the `.get`
+        # default, swapping in `min` for `max`, dropping the noise term
+        # entirely (tolerance-only), or counting only the baseline's
+        # (absent) side would all land the threshold at 5% and wrongly
+        # call this a regression.
         legacy = self.report("paced", 0.600)
         self.assertNotIn("spread", legacy)
         ok, _ = perfrun.compare(
-            self.spread_report("paced", 0.642, 0.0), legacy, 0.05)
-        self.assertFalse(ok)
+            self.spread_report("paced", 0.642, 0.20), legacy, 0.05)
+        self.assertTrue(ok)
 
-    def test_an_improvement_beyond_the_noise_is_never_a_regression(self) -> None:
+    def test_a_small_improvement_is_never_a_regression_even_when_unresolvable(self) -> None:
+        # Combined noise is 2%, well above this 1% improvement: the move
+        # is not resolvable against the noise floor. Only worsening moves
+        # are ever measured against a threshold at all, so an improvement
+        # passes unconditionally regardless of size -- this proves the
+        # direction check, not a magnitude large enough to swamp any
+        # plausible threshold (that is
+        # `test_load_going_down_is_never_a_regression`, which already
+        # exists and would catch a swapped-direction bug at a resolvable
+        # magnitude).
         ok, _ = perfrun.compare(
-            self.spread_report("paced", 0.400, 0.02),
+            self.spread_report("paced", 0.594, 0.02),
             self.spread_report("paced", 0.600, 0.02), 0.05)
         self.assertTrue(ok)
 

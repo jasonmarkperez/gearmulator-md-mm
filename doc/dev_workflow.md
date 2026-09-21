@@ -170,10 +170,14 @@ block, and the file records the host it was taken on. A `--check` or
 is refused outright rather than silently compared or overwritten — delete the
 stale baseline file first if replacing it is intended. Baselines are
 machine-specific, so `--check` is a local gate, not a CI one, and only
-slowdowns fail it. `--max-spread` (default 3%) separately refuses the
-comparison when the repeats themselves vary by more than that fraction, since
-a spread that wide cannot resolve `--tolerance`. Expect a few percent of
-run-to-run noise; compare on an otherwise idle machine.
+slowdowns fail it. `--max-spread` (default 15%) separately refuses the
+comparison when the repeats themselves disagree by more than that fraction.
+`compare`'s own threshold (below) already widens itself to absorb ordinary
+run-to-run noise, so `--max-spread` no longer exists to protect
+`--tolerance` — its only remaining job is refusing a run whose repeats are
+so inconsistent that no comparison built on their median would mean
+anything, i.e. a pathological run, not merely a noisy one. Expect a few
+percent of run-to-run noise; compare on an otherwise idle machine.
 
 `--check`'s threshold is not `--tolerance` alone: it is the larger of
 `--tolerance` and the combined observed noise of the two runs being
