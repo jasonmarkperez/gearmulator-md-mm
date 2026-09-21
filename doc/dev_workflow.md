@@ -57,6 +57,14 @@ unset. A plain `ctest` therefore reports a green run that proved almost nothing.
 sets `MD_AUTOMATION_REQUIRE_FIRMWARE=1` so a missing image becomes a failure
 instead of a skip.
 
+`dev.py test` also stages every ROM it finds into a shared data root
+(`temp/devroot/test/`) and exports `HOME`/`GEARMULATOR_DATA_ROOT` for the
+ctest run. The `*_FIRMWARE_BIN` env vars only satisfy `mdLibTest`-level
+tests that read them directly; plugin-level firmware tests construct a real
+`Processor`, which resolves its ROM through the product data folder
+(`Tools::getPublicDataFolder`) instead, so without a staged data root they
+fail with a missing-ROM error rather than running.
+
 ## Run the standalone app
 
 ```sh

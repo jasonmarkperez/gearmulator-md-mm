@@ -286,7 +286,21 @@ def cmd_build(args) -> int:
 
 def cmd_test(args) -> int:
     roms = find_roms()
+
+    # Plugin-level firmware tests construct a real Processor, which resolves
+    # its ROM through the product data folder (Tools::getPublicDataFolder),
+    # not through the *_FIRMWARE_BIN env vars mdLibTest-level tests read
+    # directly. Stage every ROM that was found into one shared root so a
+    # single ctest invocation can satisfy both kinds of test -- the two
+    # products live under different data-folder names, so staging "mm"
+    # after "md" adds to the root instead of disturbing it.
+    # enable_mcp=False: ctest runs many executables, possibly in parallel,
+    # and they must not race each other for MCP ports. fresh=False: wiping
+    # this root on every `dev.py test` invocation would erase NVRAM/flash
+    # state that tests may legitimately build up within a run.
     env = dict(os.environ)
+    for key, rom in roms.items():
+        env = stage_devroot(key, rom, enable_mcp=False, root_key="test")
     env.update(firmware_env(roms))
 
     if args.firmware:
