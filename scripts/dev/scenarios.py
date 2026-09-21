@@ -64,19 +64,13 @@ def wait_for_stable_epoch(client, log, *, since: float | None = None,
     rather than landing at a predictable offset. Across repeated `dev.py ui`
     runs during development only the early automatic bump was ever observed
     to actually fire; the factory-flash commit's diagnostic log line never
-    printed even across a 90s dedicated trace. That is consistent with, not
-    contradicting, `dev.py perf` observing that same log line on a cold data
-    root (see doc/dev_workflow.md's "MD ~150 ms lock waits" section): `perf`
-    renders continuous audio through latency_host, which is what advances
-    the emulated cycles the quiet period is gated on, while a `ui` scenario
-    only advances the device via sparse MCP calls with no continuous render
-    behind them, so it can leave that gate unreached no matter how long the
-    scenario runs. Do not delete this wait on the strength of that: the
-    point is not to wait out one named mechanism, it is that
-    boot() returns on the first drawn frame, well before *anything* running
-    on its own timeline is guaranteed to have settled, and this function
-    defends against any such unattributed commit, known or not, by waiting
-    for observed quiescence rather than assuming it.
+    printed even across a 90s dedicated trace, while `dev.py perf` observing that same log line
+    on a cold data root is expected (see doc/dev_workflow.md's "MD ~150 ms lock waits" section).
+    The cause of the difference is not established. Do not delete this wait: the point is not to
+    wait out one named mechanism, it is that boot() returns on the first drawn frame, well
+    before *anything* running on its own timeline is guaranteed to have settled, and this
+    function defends against any such unattributed commit, known or not, by waiting for
+    observed quiescence rather than assuming it.
 
     `since` anchors the floor below to a moment earlier than this function's
     own start -- pass the time the instance was launched (or as close to it

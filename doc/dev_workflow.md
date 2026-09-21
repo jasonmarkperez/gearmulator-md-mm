@@ -219,12 +219,10 @@ captures instead of two encoded blobs — same guarantee, ~0.3 ms instead of
 Result: MD `loadMax` fell from 57.7 to 1.70–1.80, and `dev.py perf` still logs
 `[MD] factory flash preparation complete; rebooted in process` on a cold
 data root, so the work still happens. That observation is specific to
-`perf`: it renders continuous audio, which is what advances the emulated
-cycles the factory-flash quiet period is gated on. A `dev.py ui` scenario
-drives the same device over MCP calls with no continuous render, so it can
-leave that quiet period unreached and the line unprinted even across a much
-longer wall-clock trace -- see `wait_for_stable_epoch()`'s docstring in
-`scenarios.py`, which documents exactly that. Neither claim is stale; they
+`perf`: it renders continuous audio through `latency_host`. A `dev.py ui` scenario
+does not emit the factory-flash reboot log line, while `dev.py perf` does. The cause
+is not established. See `wait_for_stable_epoch()`'s docstring in `scenarios.py` for
+how this is observed and defended against. Neither claim is stale; they
 describe two different data roots and workloads. A state-generation counter
 was considered and rejected: patch RAM is written from the CPU store path,
 so tracking it would tax the hot emulation loop to solve a problem that
