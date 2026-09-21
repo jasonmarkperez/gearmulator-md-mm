@@ -105,12 +105,6 @@ result describes code you did not change. That happened once here — a fix wave
 was "verified" by `ui` runs against a stale Debug build. Ninja is about a
 second when everything is current.
 
-The staged config also pre-sets `disclaimerSeen`. The editor otherwise shows a
-modal legal notice gated on "I Agree" (`jucePluginEditorLib/pluginEditor.cpp:408`),
-and because every dev root is fresh it re-arms on each launch. This affects only
-these throwaway roots — the shipped product is untouched and real users still
-see the notice on first run.
-
 ## Drive it
 
 ```sh

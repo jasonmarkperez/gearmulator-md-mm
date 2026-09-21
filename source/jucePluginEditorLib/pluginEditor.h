@@ -135,8 +135,6 @@ namespace jucePluginEditorLib
 
 		virtual void setCurrentPart(uint8_t _part);
 
-		void showDisclaimer() const;
-
 		void copyCurrentPatchToClipboard() const;
 		bool replaceCurrentPatchFromClipboard() const;
 

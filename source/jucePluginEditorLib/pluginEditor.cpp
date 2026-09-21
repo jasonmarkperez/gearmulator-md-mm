@@ -61,7 +61,9 @@ namespace jucePluginEditorLib
 		, m_skin(std::move(_skin))
 		, m_rmlInterfaces(*this)
 	{
-		showDisclaimer();
+		// The legal disclaimer this used to gate on has been removed. The
+		// Rosetta performance warning it chained into is unrelated and stays.
+		onDisclaimerFinished();
 	}
 
 	Editor::~Editor()
@@ -403,43 +405,6 @@ namespace jucePluginEditorLib
 			m_patchManager->setCurrentPart(_part);
 
 		m_pluginDataModel->set("currentPart", std::to_string(_part));
-	}
-
-	void Editor::showDisclaimer() const
-	{
-		if(pluginLib::Tools::isHeadless())
-			return;
-
-		if(!m_processor.getConfig().getBoolValue("disclaimerSeen", false))
-		{
-			const auto& plugin4CC = m_processor.getProperties().plugin4CC;
-			const auto firmwareNotice = plugin4CC == "Tmdr" || plugin4CC == "Tmno"
-				? "Do NOT discuss firmware or ROMs in Discord. "
-				  "Do not request or share files or download links, "
-				  "or ask for help obtaining or installing firmware.\n\n"
-				: "";
-
-			const juce::MessageBoxOptions options = juce::MessageBoxOptions::makeOptionsOk(juce::MessageBoxIconType::WarningIcon, m_processor.getProperties().name,
-				juce::String(firmwareNotice) +
-	           "It is the sole responsibility of the user to operate this emulator within the bounds of all applicable laws.\n\n"
-
-				"Usage of emulators in conjunction with ROM images you are not legally entitled to own is forbidden by copyright law.\n\n"
-
-				"If you are not legally entitled to use this emulator please discontinue usage immediately.\n\n", 
-
-				"I Agree"
-			);
-
-			juce::NativeMessageBox::showAsync(options, [this](int)
-			{
-				m_processor.getConfig().setValue("disclaimerSeen", true);
-				onDisclaimerFinished();
-			});
-		}
-		else
-		{
-			onDisclaimerFinished();
-		}
 	}
 
 	void Editor::copyCurrentPatchToClipboard() const

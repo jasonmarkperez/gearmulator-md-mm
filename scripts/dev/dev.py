@@ -196,18 +196,11 @@ def stage_devroot(key: str, rom: pathlib.Path, *, enable_mcp: bool,
         except OSError:
             shutil.copyfile(rom, staged)
 
-    # disclaimerSeen: the editor shows a modal legal notice gated on "I Agree"
-    # (jucePluginEditorLib/pluginEditor.cpp:408-443) and blocks startup until
-    # it is dismissed. Every dev root is fresh, so it re-arms on every launch
-    # and no automated scenario can get past it. Pre-agreeing it here affects
-    # only these throwaway roots; the shipped product is untouched and real
-    # users still see the notice.
     config_file = config_dir / f"{cfg['product']}.xml"
     config_file.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         "<PROPERTIES>\n"
         f'  <VALUE name="enableMcpServer" val="{1 if enable_mcp else 0}"/>\n'
-        '  <VALUE name="disclaimerSeen" val="1"/>\n'
         "</PROPERTIES>\n",
         encoding="utf-8")
 
