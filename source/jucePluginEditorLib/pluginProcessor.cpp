@@ -1,5 +1,8 @@
 #include "pluginProcessor.h"
 
+#include <mutex>
+#include <set>
+
 #include "pluginEditorState.h"
 #include "pluginEditorWindow.h"
 
@@ -62,6 +65,24 @@ namespace jucePluginEditorLib
 		}
 	}
 
+	namespace
+	{
+		// callAsync can outlive the processor when a host tears a plugin down
+		// during startup, so lambdas resolve the target through this set
+		// instead of capturing a raw pointer they cannot validate.
+		std::mutex& getLiveProcessorMutex()
+		{
+			static std::mutex m;
+			return m;
+		}
+
+		std::set<Processor*>& getLiveProcessors()
+		{
+			static std::set<Processor*> s;
+			return s;
+		}
+	}
+
 	Processor::Processor(const BusesProperties& _busesProperties,
 		const juce::PropertiesFile::Options& _configOptions,
 		const pluginLib::Processor::Properties& _properties,
@@ -85,13 +106,40 @@ namespace jucePluginEditorLib
 #endif
 		savePluginLoadPath();
 
+		{
+			const std::lock_guard lock(getLiveProcessorMutex());
+			getLiveProcessors().insert(this);
+		}
+
 		if (_allowMcpServer && m_config.getBoolValue("enableMcpServer", false)
 			&& !isJuceHelperProcess())
+		{
+			// Create the server and register the base tools now, but do not
+			// listen yet: this runs from the base constructor, where the
+			// derived vtable does not exist and registerProductMcpTools would
+			// dispatch to the empty base implementation. Listening starts on
+			// the message thread once the whole object is built.
 			startMcpServer();
+
+			juce::MessageManager::callAsync([this]
+			{
+				const std::lock_guard lock(getLiveProcessorMutex());
+				if (getLiveProcessors().count(this))
+					finishMcpServerStartup();
+			});
+		}
 	}
 
 	Processor::~Processor()
 	{
+		{
+			// Before stopMcpServer, so a queued startup lambda that is already
+			// waiting on the mutex sees us gone instead of touching a dying
+			// object.
+			const std::lock_guard lock(getLiveProcessorMutex());
+			getLiveProcessors().erase(this);
+		}
+
 		stopMcpServer();
 		assert(!m_editorState && "call destroyEditorState in destructor of derived class");
 	}
@@ -240,6 +288,7 @@ namespace jucePluginEditorLib
 		return newFile;
 	}
 
+
 	void Processor::startMcpServer()
 	{
 		if (m_mcpServer)
@@ -250,15 +299,6 @@ namespace jucePluginEditorLib
 			m_mcpServer = std::make_unique<mcpServer::McpPluginServer>(*this);
 			registerDomTools(m_mcpServer->getServer(), *this);
 			registerPatchManagerTools(m_mcpServer->getServer(), *this);
-			if (m_mcpServer->start())
-			{
-				LOGNET(networkLib::LogLevel::Info, "MCP server started on port " << m_mcpServer->getPort() << " for plugin " << getProperties().name);
-			}
-			else
-			{
-				LOGNET(networkLib::LogLevel::Warning, "Failed to start MCP server for plugin " << getProperties().name);
-				m_mcpServer.reset();
-			}
 		}
 		catch (const std::exception& e)
 		{
@@ -274,22 +314,49 @@ namespace jucePluginEditorLib
 		}
 	}
 
+	void Processor::finishMcpServerStartup()
+	{
+		if (!m_mcpServer || m_mcpServerListening)
+			return;
+
+		// Product tools must be in the registry before the listening socket is
+		// published, otherwise a client that polls the discovery file wins the
+		// race and sees an incomplete tool list.
+		registerProductMcpTools(m_mcpServer->getServer());
+
+		try
+		{
+			if (m_mcpServer->start())
+			{
+				m_mcpServerListening = true;
+				LOGNET(networkLib::LogLevel::Info, "MCP server started on port " << m_mcpServer->getPort() << " for plugin " << getProperties().name);
+			}
+			else
+			{
+				LOGNET(networkLib::LogLevel::Warning, "Failed to start MCP server for plugin " << getProperties().name);
+				m_mcpServer.reset();
+			}
+		}
+		catch (const std::exception& e)
+		{
+			LOGNET(networkLib::LogLevel::Warning, "MCP server start failed: " << e.what());
+			m_mcpServer.reset();
+		}
+		catch (...)
+		{
+			LOGNET(networkLib::LogLevel::Warning, "MCP server start failed with unknown exception");
+			m_mcpServer.reset();
+		}
+	}
+
 	void Processor::stopMcpServer()
 	{
 		if (m_mcpServer)
 		{
 			LOGNET(networkLib::LogLevel::Info, "MCP server stopped for plugin " << getProperties().name);
 			m_mcpServer.reset();
-			m_productMcpToolsRegistered = false;
+			m_mcpServerListening = false;
 		}
-	}
-
-	void Processor::registerProductMcpToolsOnce()
-	{
-		if (!m_mcpServer || m_productMcpToolsRegistered)
-			return;
-		m_productMcpToolsRegistered = true;
-		registerProductMcpTools(m_mcpServer->getServer());
 	}
 
 	void Processor::setMcpServerEnabled(const bool _enabled)
@@ -300,8 +367,8 @@ namespace jucePluginEditorLib
 			return;
 		}
 		startMcpServer();
-		// Safe here: the object is fully constructed, so the product override
-		// resolves. The constructor path registers from the derived constructor.
-		registerProductMcpToolsOnce();
+		// Fully constructed here, so the product override resolves and the
+		// server can begin listening immediately.
+		finishMcpServerStartup();
 	}
 }

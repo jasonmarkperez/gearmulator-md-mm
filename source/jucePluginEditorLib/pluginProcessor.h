@@ -52,12 +52,11 @@ namespace jucePluginEditorLib
 		void setMcpServerEnabled(bool _enabled);
 
 	protected:
-		// Products may expose device-specific MCP tools. The base constructor can
-		// start the server before the derived vtable exists, so a derived class
-		// that overrides this MUST call registerProductMcpToolsOnce() at the end
-		// of its own constructor. Registration is idempotent per server start.
+		// Products may expose device-specific MCP tools. This is called once,
+		// after construction is complete and before the server accepts its
+		// first connection, so the vtable is live and no client can observe a
+		// tool list that is missing these tools.
 		virtual void registerProductMcpTools(mcpServer::McpServer&) {}
-		void registerProductMcpToolsOnce();
 
 		enum class ConfigMode
 		{
@@ -74,11 +73,12 @@ namespace jucePluginEditorLib
 		juce::File initConfigFile(const juce::PropertiesFile::Options& _o) const;
 		void savePluginLoadPath();
 		void startMcpServer();
+		void finishMcpServerStartup();
 		void stopMcpServer();
 
 		std::unique_ptr<PluginEditorState> m_editorState;
 
-		bool m_productMcpToolsRegistered = false;
+		bool m_mcpServerListening = false;
 		juce::PropertiesFile::Options m_configOptions;
 		juce::PropertiesFile m_config;
 

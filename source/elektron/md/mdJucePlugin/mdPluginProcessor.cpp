@@ -424,9 +424,6 @@ namespace mdJucePlugin
 		// The environment switch is also useful in hosts without an open editor.
 		if(getPlugin().getRealtimeInstrumentation().isEnabled())
 			setPerformanceDiagnosticsEnabled(true);
-		// The base constructor may already have started the MCP server, before
-		// this class' vtable existed. Register the product tools now.
-		registerProductMcpToolsOnce();
 	}
 
 	juce::AudioProcessor::BusesProperties AudioPluginAudioProcessor::createBusesProperties()
