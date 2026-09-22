@@ -118,6 +118,15 @@ python3 scripts/dev/dev.py panel
 LCD page, and the lit status/mode/step/drum LEDs. It is the readable form of the
 `get_front_panel` MCP tool (see `doc/mcp_server.md`).
 
+The one thing the isolated dev root does *not* cover is MCP discovery.
+`DiscoveryFile` resolves its path through JUCE's `userHomeDirectory`, which on
+macOS reads the password database rather than `$HOME`, so every instance
+registers in your real `~/.gearmulator_mcp.json` no matter which root it runs
+under. Two dev instances of the same product are therefore ambiguous to
+`find_instance`, and a crashed run can leave a stale entry behind — liveness is
+checked by pid, so stale entries are ignored rather than fatal. Pass a pid when
+running more than one instance of a product at once.
+
 Assert on panel state, not on screenshots. The LCD is a rendered bitmap, so the
 RmlUi DOM says nothing about its contents, and screenshot comparisons break on
 renderer, HiDPI and skin changes. `get_front_panel` reports what the firmware
