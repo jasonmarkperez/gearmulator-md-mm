@@ -1,4 +1,5 @@
 #include "plugin.h"
+#include <cstdio>
 #include "sampleRateTime.h"
 #include "device.h"
 
@@ -190,15 +191,18 @@ namespace synthLib
 
 		std::lock_guard lock(m_lock);
 
+		// Only migrate state the outgoing device actually produced. A device
+		// that declines (DummyDevice, or a real device whose firmware failed
+		// to load) must not have a state restored onto its replacement.
 		std::vector<uint8_t> deviceState;
-		getState(deviceState, StateTypeGlobal);
+		const auto haveState = getState(deviceState, StateTypeGlobal);
 
 		delete m_device;
 
 		m_device = _device;
 
 		configureDeviceAudio();
-		if(!deviceState.empty())
+		if(haveState && !deviceState.empty())
 			setState(deviceState);
 
 		// MIDI clock has to send the start event again, some device find it confusing and do strange things if there isn't any
@@ -214,15 +218,33 @@ namespace synthLib
 		if(!m_device)
 			return false;
 
+		// Append semantics: callers may already have data in _state, and the
+		// header must not survive a device that produces nothing. Otherwise
+		// those two bytes later read back as a valid-looking payload with an
+		// empty body, which a device then rejects as corrupt.
+		const auto sizeBefore = _state.size();
+
 		_state.push_back(g_stateVersion);
 		_state.push_back(_type);
 
-		return m_device->getState(_state, _type);
+		if(m_device->getState(_state, _type))
+			return true;
+
+		_state.resize(sizeBefore);
+		return false;
 	}
 
 	bool Plugin::setState(const std::vector<uint8_t>& _state) const
 	{
 		if(_state.empty())
+			return false;
+
+		// A header with no body is not a restorable state. Sessions saved
+		// while the device could not produce state (no firmware) persist
+		// exactly this, and older saved sessions still contain it, so treat
+		// it as "nothing to restore" rather than handing a device an empty
+		// payload it can only reject as corrupt.
+		if(_state.size() == 2 && _state[0] == g_stateVersion)
 			return false;
 
 		if(_state.size() < 2)

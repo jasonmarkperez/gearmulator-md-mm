@@ -97,6 +97,12 @@ if(BUILD_TESTING)
 	set_tests_properties(synthLibStateTransactionTest PROPERTIES LABELS "UnitTest")
 	set_property(TARGET synthLibStateTransactionTest PROPERTY FOLDER "Gearmulator")
 
+	add_executable(synthLibDeviceSwapStateTest synthLibTest/deviceSwapStateTest.cpp)
+	target_link_libraries(synthLibDeviceSwapStateTest PRIVATE synthLib)
+	add_test(NAME synthLibDeviceSwapStateTest COMMAND synthLibDeviceSwapStateTest)
+	set_tests_properties(synthLibDeviceSwapStateTest PROPERTIES LABELS "UnitTest")
+	set_property(TARGET synthLibDeviceSwapStateTest PROPERTY FOLDER "Gearmulator")
+
 	add_executable(midiRoutingMatrixTest synthLibTest/midiRoutingMatrixTest.cpp)
 	target_link_libraries(midiRoutingMatrixTest PRIVATE synthLib)
 	add_test(NAME midiRoutingMatrixTest COMMAND midiRoutingMatrixTest)
