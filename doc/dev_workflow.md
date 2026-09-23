@@ -105,6 +105,23 @@ result describes code you did not change. That happened once here — a fix wave
 was "verified" by `ui` runs against a stale Debug build. Ninja is about a
 second when everything is current.
 
+## Firmware staging
+
+Building the standalone copies the matching image from the project's `/roms`
+into the data folder the app reads at startup (`~/Documents/Gearmulator
+Preview/<product>/roms`), so an app launched from Finder, an IDE or the
+command line finds its firmware instead of opening the "firmware rom is
+required" dialog. `dev.py` stages into isolated throwaway roots, which
+deliberately does nothing for a normally launched build.
+
+The image is matched by SHA-256, not by filename, because the loader
+fingerprints what it loads: a renamed or swapped file must not install as the
+wrong product and fail later at device boot with a much less obvious message.
+Identical destinations are skipped, so incremental builds do not rewrite
+8 MiB per link. Missing firmware is not a build error -- `/roms` is gitignored
+and a contributor without it must still be able to build. Opt out with
+`-Dgearmulator_STAGE_DEV_ROMS=OFF`.
+
 ## Drive it
 
 ```sh

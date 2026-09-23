@@ -102,6 +102,46 @@ if(APPLE)
 	endforeach()
 endif()
 
+# Stage firmware from the project's /roms into the data folder the standalone
+# reads, so an app launched from Finder or an IDE finds its ROM instead of
+# opening the "firmware rom is required" dialog. dev.py stages into isolated
+# throwaway roots, which deliberately do not help a normally launched build.
+# Opt out with -Dgearmulator_STAGE_DEV_ROMS=OFF.
+option(gearmulator_STAGE_DEV_ROMS "Copy /roms firmware into the local data folder after building" ON)
+
+if(gearmulator_STAGE_DEV_ROMS AND NOT CMAKE_CROSSCOMPILING)
+	if(APPLE)
+		set(gearmulator_dev_data_root "$ENV{HOME}/Documents")
+	elseif(WIN32)
+		set(gearmulator_dev_data_root "$ENV{USERPROFILE}/Documents")
+	else()
+		set(gearmulator_dev_data_root "$ENV{HOME}/Documents")
+	endif()
+
+	# Hashes of the images each product accepts, matching the fingerprints the
+	# loader checks (g_mdOs163Fingerprint / g_mmOs132bFingerprint).
+	set(md_rom_sha256 "68542e30917b9918ccaee2b2237df62c8a00479938680b85aca93ce4fbca44c8")
+	set(mm_rom_sha256 "369849175602e20a9dd2b6e0ad8ac404b76f82718b14afbf1cbc01b7acabec7e")
+
+	foreach(spec "mdJucePlugin_Standalone;Machinedrum;${md_rom_sha256}"
+	             "mmJucePlugin_Standalone;Monomachine;${mm_rom_sha256}")
+		list(GET spec 0 stage_target)
+		list(GET spec 1 stage_folder)
+		list(GET spec 2 stage_sha)
+		if(TARGET ${stage_target})
+			add_custom_command(TARGET ${stage_target} POST_BUILD
+				COMMAND ${CMAKE_COMMAND}
+					-DROMS_DIR=${CMAKE_SOURCE_DIR}/roms
+					-DDATA_DIR=${gearmulator_dev_data_root}/Gearmulator\ Preview/${stage_folder}
+					-DROM_SHA256=${stage_sha}
+					-P ${CMAKE_SOURCE_DIR}/scripts/dev/stage_dev_roms.cmake
+				COMMENT "Staging firmware for ${stage_target}"
+				VERBATIM
+			)
+		endif()
+	endforeach()
+endif()
+
 # Build an independent MM product from the shared editor/controller code.
 target_compile_definitions(mmJucePlugin PRIVATE MD_JUCEPLUGIN_MONOMACHINE=1)
 
