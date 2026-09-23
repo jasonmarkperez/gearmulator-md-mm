@@ -285,6 +285,17 @@ def cmd_build(args) -> int:
 
 
 def cmd_test(args) -> int:
+    # Build first. ctest happily runs whatever binaries are already on disk,
+    # so without this a green suite can describe code you edited hours ago.
+    # That happened here: a Release run reported 86/86 against objects built
+    # two days earlier, which did not contain the changes it was meant to
+    # verify. `run` and `ui` learned this lesson separately; `test` is the
+    # one that matters most, because it is the command whose output gets
+    # quoted as proof.
+    if not args.list:
+        cmd_build(argparse.Namespace(
+            targets=[], jobs=args.jobs, config=getattr(args, "config", None)))
+
     roms = find_roms()
 
     # Plugin-level firmware tests construct a real Processor, which resolves
